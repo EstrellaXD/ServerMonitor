@@ -1,0 +1,48 @@
+poll_interval: 5
+
+systems:
+  - id: linux-server-1
+    name: "Linux Server 1"
+    type: linux
+    enabled: true
+    config:
+      host: 192.168.1.100
+      port: 22
+      username: monitor
+      password: REPLACE_ME
+
+  - id: docker-host
+    name: "Docker Host"
+    type: docker
+    enabled: true
+    config:
+      host: tcp://192.168.1.100:2375
+
+  - id: qbittorrent
+    name: "qBittorrent"
+    type: qbittorrent
+    enabled: true
+    config:
+      url: http://192.168.1.100:8080
+      username: admin
+      password: REPLACE_ME
+
+  # - id: unifi
+  #   name: "UniFi Controller"
+  #   type: unifi
+  #   enabled: true
+  #   config:
+  #     host: 192.168.1.1
+  #     port: 443
+  #     api_key: "REPLACE_WITH_YOUR_API_KEY"
+  #     site: default
+
+  # - id: unas
+  #   name: "NAS Storage"
+  #   type: unas
+  #   enabled: true
+  #   config:
+  #     host: 192.168.1.200
+  #     port: 22
+  #     username: root
+  #     password: REPLACE_ME
