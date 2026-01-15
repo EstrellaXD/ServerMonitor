@@ -9,7 +9,15 @@
       "Bash(pkill:*)",
       "Bash(npx vue-tsc:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(python3:*)",
+      "Bash(npm run dev:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(SERVERMONITOR_MOCK_MODE=true uv run uvicorn:*)",
+      "Bash(ssh:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

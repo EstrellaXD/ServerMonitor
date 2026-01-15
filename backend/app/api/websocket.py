@@ -72,7 +72,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     try:
         update = metrics_store.create_update_message()
-        await websocket.send_json(update.model_dump(), mode="text")
+        update_json = json.dumps(update.model_dump(), default=manager._json_serializer)
+        await websocket.send_text(update_json)
 
         while True:
             try:

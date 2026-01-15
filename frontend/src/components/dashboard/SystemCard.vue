@@ -96,6 +96,18 @@ const secondaryMetric = computed(() => {
       return null
   }
 })
+
+const temperatureMetric = computed(() => {
+  if (props.system.type !== 'linux') return null
+  const m = props.system.metrics as LinuxMetrics
+  if (!m.temperatures || m.temperatures.length === 0) return null
+  const temp = m.temperatures[0]
+  return {
+    label: 'Temp',
+    value: temp.current,
+    isHot: temp.current >= 70
+  }
+})
 </script>
 
 <template>
@@ -131,7 +143,7 @@ const secondaryMetric = computed(() => {
     </div>
 
     <!-- Metrics -->
-    <div v-else class="grid grid-cols-2 gap-4">
+    <div v-else class="grid gap-4" :class="temperatureMetric ? 'grid-cols-3' : 'grid-cols-2'">
       <div class="space-y-1">
         <div class="metric-label">{{ primaryMetric.label }}</div>
         <div class="metric-value">{{ primaryMetric.value }}</div>
@@ -139,6 +151,12 @@ const secondaryMetric = computed(() => {
       <div v-if="secondaryMetric" class="space-y-1">
         <div class="metric-label">{{ secondaryMetric.label }}</div>
         <div class="metric-value">{{ secondaryMetric.value }}</div>
+      </div>
+      <div v-if="temperatureMetric" class="space-y-1">
+        <div class="metric-label">{{ temperatureMetric.label }}</div>
+        <div class="metric-value" :class="temperatureMetric.isHot ? 'text-amber-500' : ''">
+          {{ temperatureMetric.value.toFixed(0) }}°
+        </div>
       </div>
     </div>
 

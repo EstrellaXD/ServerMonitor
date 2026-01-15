@@ -4,10 +4,11 @@ from typing import Callable
 from app.collectors.base import BaseCollector
 from app.collectors.docker import DockerCollector
 from app.collectors.linux import LinuxCollector
+from app.collectors.mock import MOCK_COLLECTORS
 from app.collectors.qbittorrent import QBittorrentCollector
 from app.collectors.unas import UNASCollector
 from app.collectors.unifi import UnifiCollector
-from app.config import AppConfig, SystemConfig
+from app.config import AppConfig, SystemConfig, settings
 from app.services.metrics_store import metrics_store
 
 
@@ -23,6 +24,17 @@ class CollectorManager:
 
     def create_collector(self, system: SystemConfig) -> BaseCollector | None:
         """Create a collector based on system type."""
+        # Use mock collectors if mock mode is enabled
+        if settings.mock_mode:
+            mock_class = MOCK_COLLECTORS.get(system.type)
+            if mock_class:
+                return mock_class(
+                    system_id=system.id,
+                    name=system.name,
+                    config=system.config,
+                )
+            return None
+
         collector_classes = {
             "linux": LinuxCollector,
             "docker": DockerCollector,
@@ -71,8 +83,10 @@ class CollectorManager:
 
         for collector, result in zip(self._collectors.values(), results):
             if isinstance(result, Exception):
+                print(f"[{collector.system_id}] Collection error: {result}")
                 metrics = collector.create_error_metrics(str(result))
             else:
+                print(f"[{collector.system_id}] Collection OK: status={result.status}")
                 metrics = result
 
             metrics_store.update(collector.system_id, metrics)
@@ -82,7 +96,9 @@ class CollectorManager:
 
     async def _collection_loop(self) -> None:
         """Main collection loop."""
+        print(f"Collection loop started, poll_interval={self._poll_interval}")
         while self._running:
+            print(f"Running collection for {len(self._collectors)} collectors...")
             await self.collect_all()
             await asyncio.sleep(self._poll_interval)
 

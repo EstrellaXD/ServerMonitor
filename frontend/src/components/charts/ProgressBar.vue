@@ -7,10 +7,12 @@ const props = withDefaults(defineProps<{
   showLabel?: boolean
   size?: 'sm' | 'md' | 'lg'
   variant?: 'default' | 'gradient'
+  colorMode?: 'usage' | 'progress'
 }>(), {
   showLabel: false,
   size: 'md',
   variant: 'default',
+  colorMode: 'usage',
 })
 
 const percent = computed(() => {
@@ -27,6 +29,15 @@ const sizeClass = computed(() => {
 })
 
 const colorClass = computed(() => {
+  // Progress mode: always use primary color (high values are good)
+  if (props.colorMode === 'progress') {
+    if (props.variant === 'gradient') {
+      return 'bg-gradient-to-r from-primary-500 to-primary-400'
+    }
+    return 'bg-primary-500'
+  }
+
+  // Usage mode: red at 90%+, amber at 75%+ (high values are warnings)
   if (props.variant === 'gradient') {
     if (percent.value >= 90) return 'bg-gradient-to-r from-red-500 to-red-400'
     if (percent.value >= 75) return 'bg-gradient-to-r from-amber-500 to-amber-400'

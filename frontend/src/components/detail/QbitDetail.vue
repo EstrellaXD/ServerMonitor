@@ -82,7 +82,7 @@ const stateColors: Record<string, string> = {
         No active torrents
       </div>
 
-      <div v-else class="divide-y divide-slate-200 dark:divide-slate-700 max-h-96 overflow-y-auto">
+      <div v-else class="divide-y divide-slate-200 dark:divide-slate-700 max-h-[calc(100vh-22rem)] overflow-y-auto">
         <div
           v-for="torrent in metrics.torrents"
           :key="torrent.name"
@@ -101,7 +101,7 @@ const stateColors: Record<string, string> = {
           </div>
 
           <div class="mb-2">
-            <ProgressBar :value="torrent.progress" :max="100" />
+            <ProgressBar :value="torrent.progress" :max="100" colorMode="progress" />
           </div>
 
           <div class="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">

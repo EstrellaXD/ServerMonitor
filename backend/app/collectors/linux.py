@@ -32,6 +32,7 @@ class LinuxCollector(BaseCollector):
             "port": self.config.port,
             "username": self.config.username,
             "known_hosts": None,
+            "connect_timeout": 10,
         }
 
         if self.config.key_path:
@@ -39,6 +40,7 @@ class LinuxCollector(BaseCollector):
         elif self.config.password:
             connect_kwargs["password"] = self.config.password
 
+        print(f"Connecting to {self.config.host}:{self.config.port}...")
         return await asyncssh.connect(**connect_kwargs)
 
     async def _run_command(
@@ -159,7 +161,6 @@ class LinuxCollector(BaseCollector):
     def _parse_sensors(self, sensors_output: str) -> list[TemperatureMetrics]:
         """Parse sensors output."""
         temps = []
-        current_label = ""
 
         for line in sensors_output.strip().split("\n"):
             if ":" in line and "°C" in line:
@@ -174,6 +175,24 @@ class LinuxCollector(BaseCollector):
                     temps.append(TemperatureMetrics(label=label, current=temp))
                 except ValueError:
                     pass
+
+        return temps
+
+    def _parse_thermal_zones(self, thermal_output: str) -> list[TemperatureMetrics]:
+        """Parse thermal zone output (for Jetson/ARM devices)."""
+        temps = []
+
+        for line in thermal_output.strip().split("\n"):
+            if ":" in line:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    label = parts[0].strip()
+                    try:
+                        # Thermal zones report in millidegrees
+                        temp = float(parts[1].strip()) / 1000.0
+                        temps.append(TemperatureMetrics(label=label, current=temp))
+                    except ValueError:
+                        pass
 
         return temps
 
@@ -227,10 +246,26 @@ class LinuxCollector(BaseCollector):
             uptime = await self._run_command(conn, "cat /proc/uptime")
             loadavg = await self._run_command(conn, "cat /proc/loadavg")
 
+            # Try lm-sensors first, then fall back to thermal zones (for Jetson/ARM)
+            sensors = ""
+            thermal_zones = ""
             try:
                 sensors = await self._run_command(conn, "sensors 2>/dev/null")
             except Exception:
-                sensors = ""
+                pass
+
+            if not sensors.strip():
+                try:
+                    # Read thermal zones (Jetson, ARM, etc.)
+                    thermal_zones = await self._run_command(
+                        conn,
+                        "for zone in /sys/class/thermal/thermal_zone*/; do "
+                        "name=$(cat ${zone}type 2>/dev/null || echo zone${zone##*zone}); "
+                        "temp=$(cat ${zone}temp 2>/dev/null); "
+                        "[ -n \"$temp\" ] && echo \"$name:$temp\"; done"
+                    )
+                except Exception:
+                    pass
 
         cpu_stats = self._parse_cpu_stats(stat)
         cpu_percent, core_percents = self._calculate_cpu_percent(
@@ -267,7 +302,12 @@ class LinuxCollector(BaseCollector):
             download_rate=download_rate,
         )
 
-        temperatures = self._parse_sensors(sensors) if sensors else []
+        if sensors.strip():
+            temperatures = self._parse_sensors(sensors)
+        elif thermal_zones.strip():
+            temperatures = self._parse_thermal_zones(thermal_zones)
+        else:
+            temperatures = []
         uptime_seconds = self._parse_uptime(uptime)
 
         linux_metrics = LinuxMetrics(

@@ -1,16 +1,25 @@
 poll_interval: 5
 
 systems:
-  # Example Linux server configuration
-  # - id: linux-server-1
-  #   name: "Main Server"
-  #   type: linux
-  #   enabled: true
-  #   config:
-  #     host: 192.168.1.100
-  #     port: 22
-  #     username: monitor
-  #     key_path: ~/.ssh/id_rsa
+  - id: linux-server-1
+    name: "Server 170"
+    type: linux
+    enabled: true
+    config:
+      host: 192.168.31.170
+      port: 22
+      username: estrella
+      password: cica1234
+
+  - id: linux-server-2
+    name: "Server 14"
+    type: linux
+    enabled: true
+    config:
+      host: 192.168.31.14
+      port: 22
+      username: estrella
+      password: cica1234
 
   # Example Docker host configuration
   # - id: docker-host
@@ -21,14 +30,14 @@ systems:
   #     socket: unix:///var/run/docker.sock
 
   # Example qBittorrent configuration
-  # - id: qbittorrent
-  #   name: "qBittorrent"
-  #   type: qbittorrent
-  #   enabled: true
-  #   config:
-  #     url: http://192.168.1.100:8080
-  #     username: admin
-  #     password: adminadmin
+  - id: qbittorrent
+    name: "qBittorrent"
+    type: qbittorrent
+    enabled: true
+    config:
+      url: http://192.168.31.170:8080
+      username: admin
+      password: cica1234
 
   # Example UniFi configuration
   # - id: unifi

@@ -124,7 +124,8 @@
   }
 
   .metric-value-lg {
-    @apply text-3xl font-heading font-bold;
+    @apply text-3xl font-heading font-bold
+           text-slate-900 dark:text-white;
   }
 
   .metric-label {

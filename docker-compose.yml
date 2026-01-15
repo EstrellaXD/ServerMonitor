@@ -6,7 +6,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8742:8742"
     volumes:
       - ./backend/config.yaml:/app/config.yaml:ro
     environment:
@@ -18,7 +18,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:80"
+      - "4829:80"
     depends_on:
       - backend
     restart: unless-stopped
