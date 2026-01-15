@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(planning-with-files)",
+      "Skill(ui-ux-pro-max)",
+      "Bash(uv run python:*)",
+      "Bash(npm install:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

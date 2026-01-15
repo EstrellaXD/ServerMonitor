@@ -1,0 +1,54 @@
+poll_interval: 5
+
+systems:
+  # Example Linux server configuration
+  # - id: linux-server-1
+  #   name: "Main Server"
+  #   type: linux
+  #   enabled: true
+  #   config:
+  #     host: 192.168.1.100
+  #     port: 22
+  #     username: monitor
+  #     key_path: ~/.ssh/id_rsa
+
+  # Example Docker host configuration
+  # - id: docker-host
+  #   name: "Docker Host"
+  #   type: docker
+  #   enabled: true
+  #   config:
+  #     socket: unix:///var/run/docker.sock
+
+  # Example qBittorrent configuration
+  # - id: qbittorrent
+  #   name: "qBittorrent"
+  #   type: qbittorrent
+  #   enabled: true
+  #   config:
+  #     url: http://192.168.1.100:8080
+  #     username: admin
+  #     password: adminadmin
+
+  # Example UniFi configuration
+  # - id: unifi
+  #   name: "UniFi Controller"
+  #   type: unifi
+  #   enabled: true
+  #   config:
+  #     host: 192.168.1.1
+  #     port: 443
+  #     username: admin
+  #     password: password
+  #     site: default
+
+  # Example UNAS storage configuration
+  # - id: unas
+  #   name: "NAS Storage"
+  #   type: unas
+  #   enabled: true
+  #   config:
+  #     host: 192.168.1.50
+  #     port: 22
+  #     username: admin
+  #     key_path: ~/.ssh/id_rsa
