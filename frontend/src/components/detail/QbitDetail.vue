@@ -1,11 +1,75 @@
 <script setup lang="ts">
-import type { QBittorrentMetrics } from '@/types/metrics'
+import { ref } from 'vue'
+import type { QBittorrentMetrics, TorrentInfo } from '@/types/metrics'
+import type { MenuItem } from '@/components/common/KebabMenu.vue'
 import MetricCard from '@/components/common/MetricCard.vue'
 import ProgressBar from '@/components/charts/ProgressBar.vue'
+import KebabMenu from '@/components/common/KebabMenu.vue'
+import ConfirmModal from '@/components/common/ConfirmModal.vue'
+import { useActions, type QbitAction } from '@/composables/useActions'
 
-defineProps<{
+const props = defineProps<{
   metrics: QBittorrentMetrics
+  systemId: string
 }>()
+
+const { isLoading, error, qbitAction } = useActions(props.systemId)
+
+const confirmModal = ref({
+  show: false,
+  title: '',
+  message: '',
+  confirmLabel: '',
+  variant: 'danger' as 'warning' | 'danger',
+  hash: '',
+  action: '' as QbitAction,
+})
+
+const pausedStates = new Set(['pausedDL', 'pausedUP'])
+const activeStates = new Set([
+  'downloading', 'forcedDL', 'metaDL', 'stalledDL',
+  'uploading', 'forcedUP', 'stalledUP', 'queuedDL', 'queuedUP',
+])
+
+const getMenuItems = (torrent: TorrentInfo): MenuItem[] => {
+  const items: MenuItem[] = []
+
+  if (pausedStates.has(torrent.state)) {
+    items.push({ label: 'Resume', action: 'resume' })
+  } else if (activeStates.has(torrent.state)) {
+    items.push({ label: 'Pause', action: 'pause' })
+  }
+
+  items.push({ label: 'Delete', action: 'delete', variant: 'danger' })
+  return items
+}
+
+const onAction = (torrent: TorrentInfo, action: string) => {
+  if (action === 'resume' || action === 'pause') {
+    qbitAction(torrent.hash, action as QbitAction)
+    return
+  }
+
+  confirmModal.value = {
+    show: true,
+    title: 'Delete Torrent',
+    message: `Remove "${torrent.name}" from the list?`,
+    confirmLabel: 'Delete',
+    variant: 'danger',
+    hash: torrent.hash,
+    action: 'delete',
+  }
+}
+
+const onConfirm = (deleteFiles?: boolean) => {
+  const { hash, action } = confirmModal.value
+  confirmModal.value.show = false
+  qbitAction(hash, action, deleteFiles ?? false)
+}
+
+const onCancel = () => {
+  confirmModal.value.show = false
+}
 
 const formatSpeed = (bytesPerSec: number): string => {
   if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`
@@ -85,19 +149,34 @@ const stateColors: Record<string, string> = {
       <div v-else class="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[calc(100vh-22rem)] overflow-y-auto">
         <div
           v-for="torrent in metrics.torrents"
-          :key="torrent.name"
+          :key="torrent.hash"
           class="p-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50"
         >
           <div class="flex items-center justify-between mb-2">
             <div class="font-medium text-slate-900 dark:text-white truncate pr-2 flex-1 min-w-0">
               {{ torrent.name }}
             </div>
-            <span
-              class="px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap flex-shrink-0"
-              :class="stateColors[torrent.state] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'"
-            >
-              {{ stateLabels[torrent.state] || torrent.state }}
-            </span>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span
+                class="px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap"
+                :class="stateColors[torrent.state] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'"
+              >
+                {{ stateLabels[torrent.state] || torrent.state }}
+              </span>
+              <KebabMenu
+                :items="getMenuItems(torrent)"
+                :loading="isLoading(torrent.hash)"
+                @select="onAction(torrent, $event)"
+              />
+            </div>
+          </div>
+
+          <!-- Error indicator -->
+          <div
+            v-if="error?.targetId === torrent.hash"
+            class="mb-2 px-2.5 py-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-xs text-red-600 dark:text-red-400"
+          >
+            {{ error.message }}
           </div>
 
           <div class="mb-2">
@@ -119,5 +198,17 @@ const stateColors: Record<string, string> = {
         </div>
       </div>
     </div>
+
+    <!-- Confirm Modal -->
+    <ConfirmModal
+      :show="confirmModal.show"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-label="confirmModal.confirmLabel"
+      :variant="confirmModal.variant"
+      show-delete-files
+      @confirm="onConfirm"
+      @cancel="onCancel"
+    />
   </div>
 </template>

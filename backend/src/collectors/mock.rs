@@ -281,7 +281,7 @@ impl Collector for MockQBittorrentCollector {
         let mut total_download_speed: i64 = 0;
         let mut total_upload_speed: i64 = 0;
 
-        for t in &mut self.torrents {
+        for (idx, t) in self.torrents.iter_mut().enumerate() {
             if t.progress < 100.0 && t.state == "downloading" {
                 t.progress = (t.progress + rng.gen_range(0.1..0.5)).min(100.0);
                 if t.progress >= 100.0 {
@@ -319,6 +319,7 @@ impl Collector for MockQBittorrentCollector {
             };
 
             torrent_infos.push(TorrentInfo {
+                hash: format!("{:032x}", t.name.len() as u128 * 0xdeadbeef + idx as u128),
                 name: t.name.to_string(),
                 size: t.size,
                 progress: t.progress,

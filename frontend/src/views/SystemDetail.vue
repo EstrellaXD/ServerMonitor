@@ -114,7 +114,7 @@ const goBack = () => {
       </div>
 
       <!-- Detail component -->
-      <component v-else :is="detailComponent" :metrics="system.metrics" />
+      <component v-else :is="detailComponent" :metrics="system.metrics" :system-id="systemId" />
     </div>
   </div>
 </template>

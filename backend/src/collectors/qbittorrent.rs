@@ -99,6 +99,7 @@ impl QBittorrentCollector {
             };
 
             torrents.push(TorrentInfo {
+                hash: torrent["hash"].as_str().unwrap_or("").to_string(),
                 name: torrent["name"].as_str().unwrap_or("Unknown").to_string(),
                 size: torrent["size"].as_i64().unwrap_or(0),
                 progress: torrent["progress"].as_f64().unwrap_or(0.0) * 100.0,

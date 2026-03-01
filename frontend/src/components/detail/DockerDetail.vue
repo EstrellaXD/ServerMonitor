@@ -1,11 +1,71 @@
 <script setup lang="ts">
-import type { DockerMetrics } from '@/types/metrics'
+import { ref } from 'vue'
+import type { DockerMetrics, ContainerMetrics } from '@/types/metrics'
+import type { MenuItem } from '@/components/common/KebabMenu.vue'
 import MetricCard from '@/components/common/MetricCard.vue'
 import ProgressBar from '@/components/charts/ProgressBar.vue'
+import KebabMenu from '@/components/common/KebabMenu.vue'
+import ConfirmModal from '@/components/common/ConfirmModal.vue'
+import { useActions, type DockerAction } from '@/composables/useActions'
 
-defineProps<{
+const props = defineProps<{
   metrics: DockerMetrics
+  systemId: string
 }>()
+
+const { isLoading, error, dockerAction } = useActions(props.systemId)
+
+const confirmModal = ref({
+  show: false,
+  title: '',
+  message: '',
+  confirmLabel: '',
+  variant: 'warning' as 'warning' | 'danger',
+  containerName: '',
+  action: '' as DockerAction,
+})
+
+const getMenuItems = (container: ContainerMetrics): MenuItem[] => {
+  if (container.state === 'running' || container.state === 'paused') {
+    return [
+      { label: 'Restart', action: 'restart' },
+      { label: 'Stop', action: 'stop', variant: 'danger' },
+    ]
+  }
+  return [
+    { label: 'Start', action: 'start' },
+  ]
+}
+
+const onAction = (containerName: string, action: string) => {
+  if (action === 'start') {
+    dockerAction(containerName, 'start')
+    return
+  }
+
+  const isStop = action === 'stop'
+  confirmModal.value = {
+    show: true,
+    title: isStop ? 'Stop Container' : 'Restart Container',
+    message: isStop
+      ? `Stop "${containerName}"? Running processes will be terminated.`
+      : `Restart "${containerName}"? It will be briefly unavailable.`,
+    confirmLabel: isStop ? 'Stop' : 'Restart',
+    variant: isStop ? 'danger' : 'warning',
+    containerName,
+    action: action as DockerAction,
+  }
+}
+
+const onConfirm = () => {
+  const { containerName, action } = confirmModal.value
+  confirmModal.value.show = false
+  dockerAction(containerName, action)
+}
+
+const onCancel = () => {
+  confirmModal.value.show = false
+}
 
 const formatBytes = (bytes: number): string => {
   const units = ['B', 'KB', 'MB', 'GB']
@@ -61,7 +121,20 @@ const formatBytes = (bytes: number): string => {
               >
                 {{ container.state }}
               </span>
+              <KebabMenu
+                :items="getMenuItems(container)"
+                :loading="isLoading(container.name)"
+                @select="onAction(container.name, $event)"
+              />
             </div>
+          </div>
+
+          <!-- Error indicator -->
+          <div
+            v-if="error?.targetId === container.name"
+            class="mb-2 px-2.5 py-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-xs text-red-600 dark:text-red-400"
+          >
+            {{ error.message }}
           </div>
 
           <div v-if="container.state === 'running'" class="space-y-2">
@@ -85,5 +158,16 @@ const formatBytes = (bytes: number): string => {
         </div>
       </div>
     </div>
+
+    <!-- Confirm Modal -->
+    <ConfirmModal
+      :show="confirmModal.show"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-label="confirmModal.confirmLabel"
+      :variant="confirmModal.variant"
+      @confirm="onConfirm"
+      @cancel="onCancel"
+    />
   </div>
 </template>

@@ -65,6 +65,7 @@ export interface DockerMetrics {
 }
 
 export interface TorrentInfo {
+  hash: string
   name: string
   size: number
   progress: number

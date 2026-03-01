@@ -98,6 +98,7 @@ pub struct DockerMetrics {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentInfo {
+    pub hash: String,
     pub name: String,
     pub size: i64,
     pub progress: f64,

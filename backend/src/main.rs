@@ -6,6 +6,8 @@ use axum::Router;
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 
+use std::collections::HashMap;
+
 use server_monitor::api::{routes, websocket};
 use server_monitor::config::{load_config, Settings};
 use server_monitor::services::collector_manager::CollectorManager;
@@ -44,11 +46,20 @@ async fn main() {
 
     let collector_count = manager.collector_count();
 
+    // Build system config map for action handlers
+    let system_configs: HashMap<String, _> = config
+        .systems
+        .iter()
+        .filter(|s| s.enabled)
+        .map(|s| (s.id.clone(), s.config.clone()))
+        .collect();
+
     let state = Arc::new(routes::AppState {
         store,
         manager: tokio::sync::Mutex::new(manager),
         settings: settings.clone(),
         broadcast_tx: tx,
+        system_configs,
     });
 
     // Start collection loop
@@ -70,6 +81,14 @@ async fn main() {
         .route("/api/systems/{system_id}", get(routes::get_system))
         .route("/api/health", get(routes::health_check))
         .route("/api/reload", post(routes::reload_config))
+        .route(
+            "/api/systems/{system_id}/actions/docker",
+            post(routes::docker_action),
+        )
+        .route(
+            "/api/systems/{system_id}/actions/qbittorrent",
+            post(routes::qbit_action),
+        )
         .route("/ws", get(websocket::ws_handler))
         .layer(cors)
         .with_state(state.clone());
