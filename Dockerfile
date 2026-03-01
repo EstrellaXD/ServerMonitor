@@ -6,7 +6,7 @@ RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-FROM rust:1.83-slim AS backend
+FROM rust:1.85-slim AS backend
 
 WORKDIR /build
 
