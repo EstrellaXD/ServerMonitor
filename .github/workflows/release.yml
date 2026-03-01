@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build aarch64 Release
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-aarch64-cargo-release-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-aarch64-cargo-release-
+
+      - name: Build frontend
+        working-directory: frontend/
+        run: npm ci && npm run build
+
+      - name: Copy frontend assets to backend static dir
+        run: cp -r frontend/dist backend/static
+
+      - name: Build backend (release)
+        working-directory: backend/
+        run: cargo build --release
+
+      - name: Package release artifact
+        run: |
+          mkdir -p release/static
+          cp backend/target/release/server-monitor release/
+          cp -r backend/static/* release/static/
+          tar -czf server-monitor-aarch64-linux.tar.gz -C release .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: server-monitor-aarch64-linux.tar.gz
+          generate_release_notes: true
