@@ -1,14 +1,12 @@
 # Dependencies
 node_modules/
-venv/
-.venv/
-__pycache__/
-*.pyc
+
+# Rust build outputs
+backend/target/
 
 # Build outputs
 dist/
 build/
-*.egg-info/
 
 # IDE
 .idea/

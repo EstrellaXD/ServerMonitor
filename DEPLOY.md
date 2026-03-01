@@ -20,7 +20,7 @@ cd ServerMonitor
 Or if you're syncing from a local machine:
 
 ```bash
-rsync -avz --exclude node_modules --exclude venv --exclude __pycache__ \
+rsync -avz --exclude node_modules --exclude target --exclude dist \
   ./ your-server:~/container/ServerMonitor/
 ```
 
@@ -69,7 +69,7 @@ docker compose up --build -d
 ```
 
 This builds both images and starts:
-- **backend** on port 8742 (host networking)
+- **backend** on port 8742 (host networking, Rust binary)
 - **frontend** on port 4829 (Nginx serving the Vue SPA + reverse proxy)
 
 Verify everything is running:
@@ -92,8 +92,26 @@ Open `http://<server-ip>:4829` in your browser.
 Quick API test:
 
 ```bash
-curl http://localhost:8742/health
+curl http://localhost:8742/api/health
 curl http://localhost:8742/api/systems
+```
+
+## Using Pre-built Docker Images
+
+Instead of building locally, you can use pre-built images from GitHub Container Registry:
+
+```yaml
+# docker-compose.yml (override backend service)
+services:
+  backend:
+    image: ghcr.io/<owner>/server-monitor:latest
+    network_mode: host
+    volumes:
+      - ./backend/config.yaml:/app/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - SERVERMONITOR_CONFIG_PATH=/app/config.yaml
+    restart: unless-stopped
 ```
 
 ## Updating
@@ -117,8 +135,8 @@ docker compose up --build -d frontend  # just the frontend
 
 ServerMonitor runs well on a Raspberry Pi 4 (2GB+ RAM recommended). A few things to keep in mind:
 
-- **First build is slow** -- npm install and pip install take a while on ARM. Subsequent rebuilds use Docker layer caching and are much faster.
-- **Memory:** With all collectors enabled, expect ~150-200MB total RAM usage for both containers.
+- **First build is slow** -- Rust compilation takes a while on ARM. Use the pre-built multi-arch Docker image (`ghcr.io/<owner>/server-monitor:latest`) to skip building entirely.
+- **Memory:** With all collectors enabled, expect ~30-50MB total RAM usage for the Rust backend (significantly less than the Python version).
 - **Docker socket:** The compose file already mounts `/var/run/docker.sock` so the Docker collector can monitor containers on the Pi itself.
 - **Temperatures:** If the Pi is also one of your monitored Linux servers, `sensors` may not be available. The collector will fall back to reading `/sys/class/thermal/thermal_zone*/temp`.
 
@@ -146,26 +164,27 @@ docker compose up --build -d
 
 If you prefer to run directly on the host:
 
-### Backend
+### Backend (requires Rust toolchain)
 
 ```bash
+# Install Rust (if not installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
 cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+cargo build --release
 
 # Set config path (optional, defaults to config.yaml in cwd)
 export SERVERMONITOR_CONFIG_PATH=./config.yaml
 
-uvicorn app.main:app --host 0.0.0.0 --port 8742
+./target/release/server-monitor
 ```
 
 ### Frontend (Production Build)
 
 ```bash
 cd frontend
-npm install
-npm run build
+bun install
+bun run build
 ```
 
 Serve the `frontend/dist/` directory with any web server. You'll need to configure a reverse proxy for `/api` and `/ws` to point to the backend.
@@ -201,7 +220,8 @@ server {
 To run with fake data (useful for development or demos):
 
 ```bash
-SERVERMONITOR_MOCK_MODE=true uvicorn app.main:app --host 0.0.0.0 --port 8742
+cd backend
+SERVERMONITOR_MOCK_MODE=true cargo run --release
 ```
 
 Or in Docker Compose, add to the backend environment:

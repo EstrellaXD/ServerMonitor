@@ -1,0 +1,29 @@
+[package]
+name = "server-monitor"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75"
+
+[[bin]]
+name = "server-monitor"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+reqwest = { version = "0.12", features = ["json", "cookies", "rustls-tls"], default-features = false }
+russh = "0.48"
+russh-keys = "0.48"
+bollard = "0.18"
+tower-http = { version = "0.6", features = ["cors"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait = "0.1"
+rand = "0.8"
+futures-util = "0.3"

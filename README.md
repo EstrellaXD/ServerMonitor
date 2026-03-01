@@ -17,7 +17,7 @@ A real-time homelab monitoring dashboard that tracks Linux servers, Docker conta
 | Layer    | Technology                              |
 |----------|-----------------------------------------|
 | Frontend | Vue 3, TypeScript, TailwindCSS, Pinia   |
-| Backend  | FastAPI, asyncio, WebSocket             |
+| Backend  | Rust, Axum, Tokio, WebSocket            |
 | Deploy   | Docker Compose, Nginx reverse proxy     |
 
 ## Quick Start
@@ -40,22 +40,26 @@ Open `http://<host-ip>:4829` in your browser.
 
 ### 3. Or run locally for development
 
-**Backend:**
+**Backend (requires Rust toolchain):**
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8742
+cargo run --release
+```
+
+Or with mock data (no real infrastructure needed):
+
+```bash
+cd backend
+SERVERMONITOR_MOCK_MODE=true cargo run --release
 ```
 
 **Frontend (separate terminal):**
 
 ```bash
 cd frontend
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 The dev server proxies `/api` and `/ws` to `localhost:8742` automatically.
@@ -129,7 +133,7 @@ Set `enabled: false` on any system you don't use.
 |-----------------------------|--------------|-----------------------------|
 | `SERVERMONITOR_CONFIG_PATH` | `config.yaml`| Path to config file         |
 | `SERVERMONITOR_HOST`        | `0.0.0.0`   | Backend bind address        |
-| `SERVERMONITOR_PORT`        | `8000`       | Backend port (Docker uses 8742) |
+| `SERVERMONITOR_PORT`        | `8742`       | Backend port                |
 | `SERVERMONITOR_DEBUG`       | `false`      | Enable debug logging        |
 | `SERVERMONITOR_MOCK_MODE`   | `false`      | Use mock collectors (no real infra needed) |
 
@@ -162,24 +166,32 @@ ZFS/storage pool health, disk SMART status, temperatures, capacity. Falls back t
 | `/api/systems`       | GET    | All systems with latest metrics|
 | `/api/systems/{id}`  | GET    | Single system metrics          |
 | `/api/reload`        | POST   | Hot-reload config.yaml         |
-| `/health`            | GET    | Backend health check           |
+| `/api/health`        | GET    | Backend health check           |
 | `/ws`                | WS     | Real-time metrics stream       |
 
 ## Architecture
 
 ```
-Browser ──WebSocket──► Nginx (:4829) ──proxy──► FastAPI (:8742)
-                         │                          │
-                         │ serves Vue SPA            ├── LinuxCollector (SSH)
-                         │                          ├── DockerCollector (API)
-                         │                          ├── QbitCollector (HTTP)
-                         │                          ├── UniFiCollector (HTTP)
-                         │                          └── UNASCollector (SSH)
+Browser --WebSocket---> Nginx (:4829) --proxy---> Axum (:8742)
+                         |                          |
+                         | serves Vue SPA            |-- LinuxCollector (SSH via russh)
+                         |                          |-- DockerCollector (bollard)
+                         |                          |-- QbitCollector (reqwest)
+                         |                          |-- UniFiCollector (reqwest)
+                         |                          +-- UNASCollector (SSH via russh)
 ```
 
-- Collectors run concurrently via `asyncio.gather()` every `poll_interval` seconds
-- Metrics are stored in-memory and broadcast to all WebSocket clients on each cycle
+- Collectors run concurrently via Tokio tasks every `poll_interval` seconds
+- Metrics are stored in-memory (`RwLock<HashMap>`) and broadcast to all WebSocket clients via `tokio::sync::broadcast`
 - Frontend falls back to HTTP polling (`GET /api/systems`) if WebSocket disconnects
+
+## Docker Image
+
+Pre-built images are available from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/<owner>/server-monitor:latest
+```
 
 ## Ports
 

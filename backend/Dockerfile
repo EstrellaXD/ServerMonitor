@@ -1,17 +1,34 @@
-FROM python:3.11-slim
+FROM rust:1.83-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
+RUN cargo build --release 2>/dev/null || true
+RUN rm -rf src
+
+COPY src/ src/
+RUN touch src/main.rs src/lib.rs
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY app/ ./app/
-COPY config.yaml .
+COPY --from=builder /build/target/release/server-monitor /app/server-monitor
+COPY config.yaml /app/config.yaml
 
 EXPOSE 8742
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8742"]
+CMD ["/app/server-monitor"]

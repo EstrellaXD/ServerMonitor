@@ -2,70 +2,81 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Developer Preferences
-
-- Use `uv` instead of direct `python` commands (e.g., `uv run python` instead of `python`)
-
 ## Project Overview
 
 ServerMonitor is a homelab server monitoring dashboard with real-time metrics visualization.
 
 **Tech Stack:**
 - Frontend: Vue 3 (Composition API) + TypeScript + TailwindCSS
-- Backend: FastAPI (Python) with WebSocket support
+- Backend: Rust (Axum + Tokio) with WebSocket support
 - Data: In-memory storage (no persistence)
 
 **Monitored Systems:**
-- Linux servers via SSH
-- Docker containers
-- qBittorrent (Web API)
-- UniFi router
-- UNAS storage
+- Linux servers via SSH (russh)
+- Docker containers (bollard)
+- qBittorrent (Web API via reqwest)
+- UniFi router (API via reqwest)
+- UNAS storage (SSH via russh)
 
 ## Build and Development Commands
 
 ### Backend
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8742
+cargo build --release           # Build
+cargo run --release              # Run
+cargo test                       # Tests
+cargo clippy -- -D warnings      # Lint
+
+# Mock mode (no real infrastructure needed)
+SERVERMONITOR_MOCK_MODE=true cargo run --release
 ```
 
 ### Frontend
 ```bash
 cd frontend
-npm install
-npm run dev          # Development server
-npm run build        # Production build
-npm run preview      # Preview production build
+bun install
+bun run dev          # Development server
+bun run build        # Production build
+bun run preview      # Preview production build
 ```
 
 ### Full Stack (Docker)
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 ## Architecture
 
 ```
-backend/app/
-├── main.py              # FastAPI entry, CORS, routers
-├── config.py            # YAML config loader
-├── collectors/          # System-specific metric collectors
-│   ├── base.py          # Abstract BaseCollector
-│   ├── linux.py         # SSH-based Linux metrics
-│   ├── docker.py        # Docker API collector
-│   ├── qbittorrent.py   # qBit Web API
-│   ├── unifi.py         # UniFi Controller API
-│   └── unas.py          # NAS storage collector
+backend/src/
+├── main.rs              # Tokio runtime, Axum router, graceful shutdown
+├── lib.rs               # Module re-exports
+├── error.rs             # CollectorError, AppError with IntoResponse
+├── config/
+│   ├── settings.rs      # Environment variable settings
+│   ├── app_config.rs    # YAML config loading
+│   └── system_configs.rs # Per-type config structs
+├── models/
+│   ├── status.rs        # SystemStatus, SystemType enums
+│   ├── metrics.rs       # All metric structs (Linux, Docker, etc.)
+│   ├── system_metrics.rs # SystemMetrics + MetricsPayload union
+│   └── messages.rs      # MetricsUpdate WebSocket message
+├── collectors/
+│   ├── mod.rs           # Collector trait + factory function
+│   ├── ssh_connection.rs # Shared SSH abstraction (Linux + UNAS)
+│   ├── linux.rs         # SSH-based Linux metrics
+│   ├── docker.rs        # Docker API via bollard
+│   ├── qbittorrent.rs   # qBit Web API via reqwest
+│   ├── unifi.rs         # UniFi API via reqwest
+│   ├── unas.rs          # NAS storage via SSH
+│   └── mock.rs          # Mock collectors for testing
 ├── services/
-│   ├── collector_manager.py  # Orchestrates all collectors
-│   └── metrics_store.py      # In-memory metrics cache
+│   ├── metrics_store.rs # RwLock<HashMap> in-memory cache
+│   └── collector_manager.rs # Collection loop orchestration
 └── api/
-    ├── routes.py        # REST endpoints
-    └── websocket.py     # Real-time streaming
+    ├── routes.rs        # REST handlers + AppState
+    └── websocket.rs     # WebSocket broadcast via tokio::sync::broadcast
 
 frontend/src/
 ├── components/
@@ -78,22 +89,31 @@ frontend/src/
 
 ## Key Patterns
 
-- **Collectors:** Each system type extends `BaseCollector` with `collect()` and `check_health()` methods
-- **Real-time:** Backend pushes metrics via WebSocket every 5-10 seconds
+- **Collectors:** Each system type implements the `Collector` trait with `collect()` and `close()` methods
+- **SSH Sharing:** `SshConnection` abstracts SSH for both Linux and UNAS collectors
+- **State:** `Arc<AppState>` passed through Axum `State` extractor (replaces Python module-level singletons)
+- **Real-time:** `tokio::sync::broadcast` for WebSocket fan-out (serialize once, not per-connection)
 - **Status:** Systems are `healthy`, `warning`, `critical`, or `offline`
 - **Theming:** Dark/Light mode via TailwindCSS `class` strategy
 
 ## Configuration
 
-Systems are defined in `config.yaml`:
+Systems are defined in `backend/config.yaml`:
 ```yaml
 poll_interval: 5
 systems:
   - id: linux-server-1
+    name: "My Server"
     type: linux
-    host: 192.168.1.100
-    ssh_user: monitor
+    config:
+      host: 192.168.1.100
+      username: monitor
 ```
+
+## CI/CD
+
+- **CI:** `.github/workflows/ci.yml` -- cargo check, clippy, test, build on push/PR
+- **Docker Publish:** `.github/workflows/docker-publish.yml` -- multi-arch image to ghcr.io on version tags
 
 ## Planning Files
 
