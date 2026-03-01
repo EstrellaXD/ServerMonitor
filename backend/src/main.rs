@@ -5,6 +5,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 
 use std::collections::HashMap;
 
@@ -75,8 +76,11 @@ async fn main() {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let static_dir = std::env::var("SERVERMONITOR_STATIC_DIR")
+        .unwrap_or_else(|_| "/app/static".to_string());
+    let index_file = format!("{}/index.html", static_dir);
+
     let app = Router::new()
-        .route("/", get(routes::root))
         .route("/api/systems", get(routes::get_all_systems))
         .route("/api/systems/{system_id}", get(routes::get_system))
         .route("/api/health", get(routes::health_check))
@@ -90,6 +94,7 @@ async fn main() {
             post(routes::qbit_action),
         )
         .route("/ws", get(websocket::ws_handler))
+        .fallback_service(ServeDir::new(&static_dir).fallback(ServeFile::new(&index_file)))
         .layer(cors)
         .with_state(state.clone());
 

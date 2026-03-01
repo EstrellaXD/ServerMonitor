@@ -1,6 +1,6 @@
 [package]
 name = "server-monitor"
-version = "1.0.0"
+version = "1.2.0"
 edition = "2021"
 rust-version = "1.75"
 
@@ -18,7 +18,7 @@ reqwest = { version = "0.12", features = ["json", "cookies", "rustls-tls"], defa
 russh = "0.48"
 russh-keys = "0.48"
 bollard = "0.18"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors", "fs"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
