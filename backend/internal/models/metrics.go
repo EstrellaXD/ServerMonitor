@@ -112,6 +112,8 @@ type UnifiDevice struct {
 	Model  string `json:"model"`
 	Status string `json:"status"`
 	Uptime int64  `json:"uptime"`
+	// Only gateways report sensors; for other devices this is null or empty.
+	Temperatures []TemperatureMetrics `json:"temperatures"`
 }
 
 type UnifiMetrics struct {

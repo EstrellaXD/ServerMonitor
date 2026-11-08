@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UnifiMetrics } from '@/types/metrics'
+import type { TemperatureMetrics, UnifiMetrics } from '@/types/metrics'
 import MetricCard from '@/components/common/MetricCard.vue'
 
 defineProps<{
@@ -14,6 +14,9 @@ const formatUptime = (seconds: number): string => {
   if (hours > 0) return `${hours}h`
   return '< 1h'
 }
+
+// The backend sends the warning threshold (70°C) as `high`.
+const isHot = (t: TemperatureMetrics): boolean => t.high !== undefined && t.current >= t.high
 </script>
 
 <template>
@@ -73,6 +76,18 @@ const formatUptime = (seconds: number): string => {
                 Uptime: {{ formatUptime(device.uptime) }}
               </div>
             </div>
+          </div>
+          <div v-if="device.temperatures?.length" class="flex flex-wrap gap-2 mt-3 pl-[3.25rem]">
+            <span
+              v-for="temp in device.temperatures"
+              :key="temp.label"
+              class="px-2 py-1 text-xs font-medium rounded-md tabular-nums"
+              :class="isHot(temp)
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+                : 'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300'"
+            >
+              {{ temp.label }} {{ temp.current.toFixed(1) }}°C
+            </span>
           </div>
         </div>
       </div>

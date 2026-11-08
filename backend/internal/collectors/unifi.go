@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -64,11 +65,45 @@ type unifiSitesResp struct {
 type unifiDevicesResp struct {
 	Data []struct {
 		Name   string `json:"name"`
-		MAC    string `json:"mac"`
+		MAC    string `json:"macAddress"`
 		Model  string `json:"model"`
 		State  string `json:"state"`
 		Uptime int64  `json:"uptime"`
 	} `json:"data"`
+}
+
+// unifiTempWarning is the sensor reading (°C) at which a device turns the
+// system status to warning.
+const unifiTempWarning = 70.0
+
+// The Integration API has no sensor data, so temperatures come from the
+// legacy Network API (stat/device), which accepts the same API key.
+type unifiLegacyTemp struct {
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+}
+
+type unifiLegacyDevice struct {
+	MAC          string            `json:"mac"`
+	Temperatures []unifiLegacyTemp `json:"temperatures"`
+}
+
+type unifiLegacyDevicesResp struct {
+	Data []unifiLegacyDevice `json:"data"`
+}
+
+// unifiTemperatures maps lowercase MAC → sensor readings.
+func unifiTemperatures(resp unifiLegacyDevicesResp) map[string][]models.TemperatureMetrics {
+	high := unifiTempWarning
+	out := make(map[string][]models.TemperatureMetrics, len(resp.Data))
+	for _, d := range resp.Data {
+		temps := make([]models.TemperatureMetrics, 0, len(d.Temperatures))
+		for _, t := range d.Temperatures {
+			temps = append(temps, models.TemperatureMetrics{Label: t.Name, Current: t.Value, High: &high})
+		}
+		out[strings.ToLower(d.MAC)] = temps
+	}
+	return out
 }
 
 type unifiClientsResp struct {
@@ -110,6 +145,13 @@ func unifiStatus(m models.UnifiMetrics) models.SystemStatus {
 	if offline > 0 {
 		return models.StatusWarning
 	}
+	for _, d := range m.Devices {
+		for _, t := range d.Temperatures {
+			if t.High != nil && t.Current >= *t.High {
+				return models.StatusWarning
+			}
+		}
+	}
 	return models.StatusHealthy
 }
 
@@ -129,6 +171,15 @@ func (c *UnifiCollector) Collect(ctx context.Context) *models.SystemMetrics {
 		return models.NewErrorMetrics(c.id, c.name, models.TypeUnifi, err.Error())
 	}
 
+	// Temperatures are supplementary: if the legacy API fails, still report
+	// devices and clients, just without sensor readings.
+	var legacy unifiLegacyDevicesResp
+	legacyURL := fmt.Sprintf("https://%s:%d/proxy/network/api/s/%s/stat/device", c.cfg.Host, c.cfg.Port, c.cfg.Site)
+	if err := c.getJSON(ctx, client, legacyURL, &legacy); err != nil {
+		slog.Warn("unifi: temperature fetch failed", "id", c.id, "err", err)
+	}
+	temps := unifiTemperatures(legacy)
+
 	out := make([]models.UnifiDevice, 0, len(devices.Data))
 	for _, d := range devices.Data {
 		status := "offline"
@@ -147,11 +198,12 @@ func (c *UnifiCollector) Collect(ctx context.Context) *models.SystemMetrics {
 			model = "Unknown"
 		}
 		out = append(out, models.UnifiDevice{
-			Name:   name,
-			MAC:    d.MAC,
-			Model:  model,
-			Status: status,
-			Uptime: d.Uptime,
+			Name:         name,
+			MAC:          d.MAC,
+			Model:        model,
+			Status:       status,
+			Uptime:       d.Uptime,
+			Temperatures: temps[strings.ToLower(d.MAC)],
 		})
 	}
 

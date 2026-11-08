@@ -105,6 +105,7 @@ export interface UnifiDevice {
   model: string
   status: string
   uptime: number
+  temperatures: TemperatureMetrics[] | null
 }
 
 export interface UnifiMetrics {

@@ -111,38 +111,21 @@ func corsMiddleware(next http.Handler) http.Handler {
 // spaFileServer serves staticDir and falls back to index.html for unknown
 // paths so client-side routes work.
 func spaFileServer(staticDir string) http.Handler {
-	fs := http.FileServer(http.Dir(staticDir))
+	root := http.Dir(staticDir)
+	files := http.FileServer(root)
 	indexPath := fmt.Sprintf("%s/index.html", staticDir)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Try the requested file first; if missing, serve index.html.
-		w2 := &notFoundCapturingWriter{ResponseWriter: w}
-		fs.ServeHTTP(w2, r)
-		if w2.notFound {
+		// Check existence up front. Letting FileServer 404 first would leave
+		// its text/plain Content-Type on the shared header map.
+		// http.Dir.Open cleans the path, so ".." cannot escape staticDir.
+		f, err := root.Open(r.URL.Path)
+		if err != nil {
 			http.ServeFile(w, r, indexPath)
+			return
 		}
+		f.Close()
+		files.ServeHTTP(w, r)
 	})
-}
-
-type notFoundCapturingWriter struct {
-	http.ResponseWriter
-	notFound    bool
-	wroteHeader bool
-}
-
-func (w *notFoundCapturingWriter) WriteHeader(status int) {
-	if status == http.StatusNotFound {
-		w.notFound = true
-		return
-	}
-	w.wroteHeader = true
-	w.ResponseWriter.WriteHeader(status)
-}
-
-func (w *notFoundCapturingWriter) Write(b []byte) (int, error) {
-	if w.notFound {
-		return len(b), nil
-	}
-	return w.ResponseWriter.Write(b)
 }
 
 func reloadHandler(state *AppState) http.HandlerFunc {
