@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- Backend rewritten from Rust (Axum + Tokio) to Go 1.23 (chi + goroutines). Wire format unchanged: existing frontend, API contract, config file, and Docker invocation are byte-identical. Build time drops from ~2 min to ~20 s; binary size ~15 MB.
+
 ### Added
 - Docker container controls: start, stop, restart via kebab menu on each container card
 - qBittorrent torrent controls: resume, pause, delete via kebab menu on each torrent card

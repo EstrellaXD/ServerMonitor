@@ -6,35 +6,26 @@ RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-FROM rust:slim AS backend
+FROM golang:1.23-alpine AS backend
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
 
-COPY backend/Cargo.toml backend/Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
-RUN cargo build --release 2>/dev/null || true
-RUN rm -rf src
+COPY backend/cmd/ cmd/
+COPY backend/internal/ internal/
 
-COPY backend/src/ src/
-RUN touch src/main.rs src/lib.rs
-RUN cargo build --release
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o server-monitor ./cmd/server-monitor
 
-FROM debian:bookworm-slim
+FROM alpine:3
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libssl3 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 
-COPY --from=backend /build/target/release/server-monitor /app/server-monitor
+COPY --from=backend /build/server-monitor /app/server-monitor
 COPY --from=frontend /build/dist /app/static
 
 EXPOSE 8742

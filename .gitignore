@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
 
-# Rust build outputs
-backend/target/
+# Go build outputs
+backend/server-monitor
+backend/static/
 
 # Build outputs
 dist/

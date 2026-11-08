@@ -36,12 +36,27 @@ export interface TemperatureMetrics {
   critical?: number
 }
 
+export interface FanMetrics {
+  label: string
+  rpm: number
+}
+
+export interface ProcessMetrics {
+  pid: number
+  name: string
+  cpu_percent: number
+  memory_usage: number
+  memory_percent: number
+}
+
 export interface LinuxMetrics {
   cpu: CpuMetrics
   memory: MemoryMetrics
   disks: DiskMetrics[]
   network: NetworkMetrics
   temperatures: TemperatureMetrics[]
+  fans: FanMetrics[]
+  processes: ProcessMetrics[]
   uptime: number
 }
 

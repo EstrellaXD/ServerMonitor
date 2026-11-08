@@ -246,5 +246,54 @@ const uptime = computed(() => formatUptime(props.metrics.uptime))
         </div>
       </div>
     </div>
+
+    <!-- Fans -->
+    <div v-if="metrics.fans?.length" class="card p-4 sm:p-6">
+      <h3 class="section-title mb-4">Fans</h3>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+        <div
+          v-for="fan in metrics.fans"
+          :key="fan.label"
+          class="p-4 rounded-xl text-center bg-slate-50 dark:bg-white/5"
+        >
+          <div class="text-3xl font-heading font-bold text-slate-900 dark:text-white tabular-nums">
+            {{ fan.rpm }}
+          </div>
+          <div class="text-xs text-slate-500 dark:text-slate-400">RPM</div>
+          <div class="text-sm text-slate-600 dark:text-slate-400 mt-1 font-mono truncate">{{ fan.label }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Processes -->
+    <div v-if="metrics.processes?.length" class="card p-4 sm:p-6">
+      <h3 class="section-title mb-4">Top Processes</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+              <th class="py-2 pr-4 font-medium">PID</th>
+              <th class="py-2 pr-4 font-medium">Name</th>
+              <th class="py-2 pr-4 font-medium text-right">CPU</th>
+              <th class="py-2 pr-4 font-medium text-right">Memory</th>
+              <th class="py-2 font-medium text-right">Mem %</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="proc in metrics.processes"
+              :key="proc.pid"
+              class="border-b border-slate-100 dark:border-white/5 last:border-0"
+            >
+              <td class="py-2 pr-4 font-mono text-slate-500 dark:text-slate-400 tabular-nums">{{ proc.pid }}</td>
+              <td class="py-2 pr-4 font-mono text-slate-900 dark:text-white truncate max-w-[16rem]">{{ proc.name }}</td>
+              <td class="py-2 pr-4 text-right tabular-nums text-slate-900 dark:text-white">{{ proc.cpu_percent.toFixed(1) }}%</td>
+              <td class="py-2 pr-4 text-right tabular-nums text-slate-600 dark:text-slate-300">{{ formatBytes(proc.memory_usage) }}</td>
+              <td class="py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{{ proc.memory_percent.toFixed(1) }}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>

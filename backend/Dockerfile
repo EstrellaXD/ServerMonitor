@@ -1,32 +1,23 @@
-FROM rust:slim AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+COPY go.mod go.sum ./
+RUN go mod download
 
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
-RUN cargo build --release 2>/dev/null || true
-RUN rm -rf src
+COPY cmd/ cmd/
+COPY internal/ internal/
 
-COPY src/ src/
-RUN touch src/main.rs src/lib.rs
-RUN cargo build --release
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o server-monitor ./cmd/server-monitor
 
-FROM debian:bookworm-slim
+FROM alpine:3
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libssl3 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 
-COPY --from=builder /build/target/release/server-monitor /app/server-monitor
+COPY --from=builder /build/server-monitor /app/server-monitor
 COPY config.yaml /app/config.yaml
 
 EXPOSE 8742

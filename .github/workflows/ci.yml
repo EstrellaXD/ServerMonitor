@@ -6,59 +6,25 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  check:
-    name: Cargo Check
+  vet:
+    name: go vet
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry and target
-        uses: actions/cache@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            backend/target
-          key: ${{ runner.os }}-cargo-check-${{ hashFiles('backend/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-check-
+          go-version: "1.23"
 
-      - name: Run cargo check
+      - name: Resolve modules
         working-directory: backend/
-        run: cargo check
+        run: go mod download || go mod tidy
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Cache cargo registry and target
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            backend/target
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('backend/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-clippy-
-
-      - name: Run clippy
+      - name: Vet
         working-directory: backend/
-        run: cargo clippy -- -D warnings
+        run: go vet ./...
 
   test:
     name: Tests
@@ -66,23 +32,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry and target
-        uses: actions/cache@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            backend/target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('backend/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-test-
+          go-version: "1.23"
+
+      - name: Resolve modules
+        working-directory: backend/
+        run: go mod download || go mod tidy
 
       - name: Run tests
         working-directory: backend/
-        run: cargo test
+        run: go test -race -count=1 ./...
 
   build:
     name: Release Build
@@ -90,20 +51,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry and target
-        uses: actions/cache@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            backend/target
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('backend/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-build-
+          go-version: "1.23"
 
-      - name: Build release
+      - name: Resolve modules
         working-directory: backend/
-        run: cargo build --release
+        run: go mod download || go mod tidy
+
+      - name: Build
+        working-directory: backend/
+        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o server-monitor ./cmd/server-monitor

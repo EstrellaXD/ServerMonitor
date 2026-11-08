@@ -17,7 +17,7 @@ A real-time homelab monitoring dashboard that tracks Linux servers, Docker conta
 | Layer    | Technology                              |
 |----------|-----------------------------------------|
 | Frontend | Vue 3, TypeScript, TailwindCSS, Pinia   |
-| Backend  | Rust, Axum, Tokio, WebSocket            |
+| Backend  | Go 1.23, chi, gorilla/websocket         |
 | Deploy   | Docker Compose, Nginx reverse proxy     |
 
 ## Quick Start
@@ -40,18 +40,18 @@ Open `http://<host-ip>:4829` in your browser.
 
 ### 3. Or run locally for development
 
-**Backend (requires Rust toolchain):**
+**Backend (requires Go 1.23+):**
 
 ```bash
 cd backend
-cargo run --release
+go run ./cmd/server-monitor
 ```
 
 Or with mock data (no real infrastructure needed):
 
 ```bash
 cd backend
-SERVERMONITOR_MOCK_MODE=true cargo run --release
+SERVERMONITOR_MOCK_MODE=true go run ./cmd/server-monitor
 ```
 
 **Frontend (separate terminal):**
@@ -172,17 +172,17 @@ ZFS/storage pool health, disk SMART status, temperatures, capacity. Falls back t
 ## Architecture
 
 ```
-Browser --WebSocket---> Nginx (:4829) --proxy---> Axum (:8742)
+Browser --WebSocket---> Nginx (:4829) --proxy---> chi router (:8742)
                          |                          |
-                         | serves Vue SPA            |-- LinuxCollector (SSH via russh)
-                         |                          |-- DockerCollector (bollard)
-                         |                          |-- QbitCollector (reqwest)
-                         |                          |-- UniFiCollector (reqwest)
-                         |                          +-- UNASCollector (SSH via russh)
+                         | serves Vue SPA            |-- LinuxCollector (golang.org/x/crypto/ssh)
+                         |                          |-- DockerCollector (docker/docker/client)
+                         |                          |-- QbitCollector (net/http + cookiejar)
+                         |                          |-- UniFiCollector (net/http)
+                         |                          +-- UNASCollector (golang.org/x/crypto/ssh)
 ```
 
-- Collectors run concurrently via Tokio tasks every `poll_interval` seconds
-- Metrics are stored in-memory (`RwLock<HashMap>`) and broadcast to all WebSocket clients via `tokio::sync::broadcast`
+- Collectors run serially in a single goroutine every `poll_interval` seconds
+- Metrics are stored in-memory (`sync.RWMutex` + `map`) and fanned out to all WebSocket clients via a custom buffered broadcaster
 - Frontend falls back to HTTP polling (`GET /api/systems`) if WebSocket disconnects
 
 ## Docker Image

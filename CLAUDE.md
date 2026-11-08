@@ -8,28 +8,28 @@ ServerMonitor is a homelab server monitoring dashboard with real-time metrics vi
 
 **Tech Stack:**
 - Frontend: Vue 3 (Composition API) + TypeScript + TailwindCSS
-- Backend: Rust (Axum + Tokio) with WebSocket support
+- Backend: Go 1.23 (chi router + gorilla/websocket) with goroutine-based concurrency
 - Data: In-memory storage (no persistence)
 
 **Monitored Systems:**
-- Linux servers via SSH (russh)
-- Docker containers (bollard)
-- qBittorrent (Web API via reqwest)
-- UniFi router (API via reqwest)
-- UNAS storage (SSH via russh)
+- Linux servers via SSH (`golang.org/x/crypto/ssh`)
+- Docker containers (`github.com/docker/docker/client`)
+- qBittorrent (Web API via `net/http` + `cookiejar`)
+- UniFi router (API via `net/http`)
+- UNAS storage (SSH via `golang.org/x/crypto/ssh`)
 
 ## Build and Development Commands
 
 ### Backend
 ```bash
 cd backend
-cargo build --release           # Build
-cargo run --release              # Run
-cargo test                       # Tests
-cargo clippy -- -D warnings      # Lint
+go build -o server-monitor ./cmd/server-monitor   # Build
+go run ./cmd/server-monitor                        # Run
+go test ./...                                      # Tests
+go vet ./...                                       # Vet
 
 # Mock mode (no real infrastructure needed)
-SERVERMONITOR_MOCK_MODE=true cargo run --release
+SERVERMONITOR_MOCK_MODE=true go run ./cmd/server-monitor
 ```
 
 ### Frontend
@@ -49,34 +49,23 @@ docker compose up --build
 ## Architecture
 
 ```
-backend/src/
-├── main.rs              # Tokio runtime, Axum router, graceful shutdown
-├── lib.rs               # Module re-exports
-├── error.rs             # CollectorError, AppError with IntoResponse
-├── config/
-│   ├── settings.rs      # Environment variable settings
-│   ├── app_config.rs    # YAML config loading
-│   └── system_configs.rs # Per-type config structs
-├── models/
-│   ├── status.rs        # SystemStatus, SystemType enums
-│   ├── metrics.rs       # All metric structs (Linux, Docker, etc.)
-│   ├── system_metrics.rs # SystemMetrics + MetricsPayload union
-│   └── messages.rs      # MetricsUpdate WebSocket message
-├── collectors/
-│   ├── mod.rs           # Collector trait + factory function
-│   ├── ssh_connection.rs # Shared SSH abstraction (Linux + UNAS)
-│   ├── linux.rs         # SSH-based Linux metrics
-│   ├── docker.rs        # Docker API via bollard
-│   ├── qbittorrent.rs   # qBit Web API via reqwest
-│   ├── unifi.rs         # UniFi API via reqwest
-│   ├── unas.rs          # NAS storage via SSH
-│   └── mock.rs          # Mock collectors for testing
-├── services/
-│   ├── metrics_store.rs # RwLock<HashMap> in-memory cache
-│   └── collector_manager.rs # Collection loop orchestration
-└── api/
-    ├── routes.rs        # REST handlers + AppState
-    └── websocket.rs     # WebSocket broadcast via tokio::sync::broadcast
+backend/
+├── go.mod                          # module github.com/EstrellaXD/ServerMonitor/backend
+├── cmd/server-monitor/main.go      # Entry: signal handling, lifecycle, http.Server
+└── internal/
+    ├── api/
+    │   ├── routes.go               # chi router, AppState, CORS, SPA fallback
+    │   ├── actions.go              # Docker / qBittorrent action handlers
+    │   └── websocket.go            # gorilla/websocket upgrade + per-conn pump
+    ├── broadcast/broadcast.go      # Subscriber registry (lag-tolerant fan-out)
+    ├── collectors/
+    │   ├── collector.go            # Collector interface + factory
+    │   ├── ssh.go                  # Shared SSH abstraction (Linux + UNAS)
+    │   ├── linux.go, docker.go, qbittorrent.go, unifi.go, unas.go, mock.go
+    ├── config/                     # settings, systems, YAML loader
+    ├── manager/manager.go          # Poll loop, reload-safe collector set
+    ├── models/                     # Wire-format structs (status, metrics, messages)
+    └── store/metrics_store.go      # sync.RWMutex + map cache
 
 frontend/src/
 ├── components/
@@ -89,10 +78,10 @@ frontend/src/
 
 ## Key Patterns
 
-- **Collectors:** Each system type implements the `Collector` trait with `collect()` and `close()` methods
-- **SSH Sharing:** `SshConnection` abstracts SSH for both Linux and UNAS collectors
-- **State:** `Arc<AppState>` passed through Axum `State` extractor (replaces Python module-level singletons)
-- **Real-time:** `tokio::sync::broadcast` for WebSocket fan-out (serialize once, not per-connection)
+- **Collectors:** Each system type implements the `Collector` interface with `Collect(ctx)` and `Close()` methods
+- **SSH Sharing:** `SSHConnection` abstracts SSH for both Linux and UNAS collectors (lazy reconnect, single mutex)
+- **State:** `*api.AppState` passed by pointer (GC-managed; no `Arc` ceremony)
+- **Real-time:** Custom `Broadcaster` does serialize-once fan-out to a registry of buffered channels; slow consumers are dropped
 - **Status:** Systems are `healthy`, `warning`, `critical`, or `offline`
 - **Theming:** Dark/Light mode via TailwindCSS `class` strategy
 
@@ -112,8 +101,8 @@ systems:
 
 ## CI/CD
 
-- **CI:** `.github/workflows/ci.yml` -- cargo check, clippy, test, build on push/PR
-- **Docker Publish:** `.github/workflows/docker-publish.yml` -- multi-arch image to ghcr.io on version tags
+- **CI:** `.github/workflows/ci.yml` -- `go vet`, `go test -race`, `go build` on push/PR
+- **Release:** `.github/workflows/release.yml` -- aarch64 cross-compile + tarball on `v*` tags
 
 ## Planning Files
 
