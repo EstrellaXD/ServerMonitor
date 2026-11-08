@@ -50,7 +50,19 @@ func (c *SSHConnection) buildAuth() ([]ssh.AuthMethod, error) {
 		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
 	}
 	if c.password != "" {
-		return []ssh.AuthMethod{ssh.Password(c.password)}, nil
+		// Some sshd builds (e.g. UniFi UNAS) disable the "password" method
+		// and ask for the password via keyboard-interactive instead.
+		answer := func(_, _ string, questions []string, _ []bool) ([]string, error) {
+			answers := make([]string, len(questions))
+			for i := range answers {
+				answers[i] = c.password
+			}
+			return answers, nil
+		}
+		return []ssh.AuthMethod{
+			ssh.Password(c.password),
+			ssh.KeyboardInteractive(answer),
+		}, nil
 	}
 	return nil, errors.New("no authentication method provided")
 }

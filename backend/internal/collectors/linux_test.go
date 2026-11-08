@@ -65,17 +65,19 @@ func TestParseMeminfo_convertskBToBytes(t *testing.T) {
 	}
 }
 
-func TestParseDF_keepsBlockDevicesAndConvertskBToBytes(t *testing.T) {
+func TestParseDF_keepsBlockDevicesAndKeepsByteValues(t *testing.T) {
+	// `df -B1` already reports bytes; no unit conversion may happen.
 	in := "Filesystem 1B-blocks Used Available Use% Mounted on\n" +
-		"/dev/sda1 1024 512 512 50% /\n" +
+		"/dev/sda1 62277025792 29385510912 30316933120 50% /\n" +
 		"tmpfs 100 50 50 50% /tmp\n"
 	disks := parseDF(in)
 	// tmpfs is intentionally filtered out (parity with Rust collector).
 	if len(disks) != 1 {
 		t.Fatalf("got %d disks", len(disks))
 	}
-	if disks[0].Mount != "/" || disks[0].Total != 1024*1024 {
-		t.Fatalf("first: %+v", disks[0])
+	d := disks[0]
+	if d.Mount != "/" || d.Total != 62277025792 || d.Used != 29385510912 || d.Free != 30316933120 {
+		t.Fatalf("first: %+v", d)
 	}
 }
 

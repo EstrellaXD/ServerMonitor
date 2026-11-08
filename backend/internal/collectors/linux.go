@@ -18,9 +18,10 @@ const linuxCombinedCmd = `echo "===STAT===" && cat /proc/stat && ` +
 	`echo "===UPTIME===" && cat /proc/uptime && ` +
 	`echo "===LOADAVG===" && cat /proc/loadavg && ` +
 	`echo "===SENSORS===" && (sensors 2>/dev/null || true) && ` +
-	`echo "===THERMAL===" && (for zone in /sys/class/thermal/thermal_zone*/; do ` +
-	`name=$(cat ${zone}type 2>/dev/null || echo zone${zone##*zone}); ` +
-	`temp=$(cat ${zone}temp 2>/dev/null); ` +
+	// find, not a glob: under zsh (nomatch) an unmatched glob aborts the whole command.
+	`echo "===THERMAL===" && (for zone in $(find /sys/class/thermal/ -maxdepth 1 -name 'thermal_zone*' 2>/dev/null); do ` +
+	`name=$(cat $zone/type 2>/dev/null || echo zone${zone##*zone}); ` +
+	`temp=$(cat $zone/temp 2>/dev/null); ` +
 	`[ -n "$temp" ] && echo "$name:$temp"; done 2>/dev/null || true) && ` +
 	// find, not a glob: under zsh (nomatch) an unmatched glob aborts the whole command.
 	`echo "===FANS===" && (for f in $(find -L /sys/class/hwmon/ -mindepth 2 -maxdepth 2 -name 'fan*_input' 2>/dev/null); do [ -r "$f" ] || continue; ` +
@@ -204,9 +205,9 @@ func parseDF(df string) []models.DiskMetrics {
 		pct, _ := strconv.ParseFloat(strings.TrimSuffix(parts[4], "%"), 64)
 		disks = append(disks, models.DiskMetrics{
 			Mount:   parts[5],
-			Total:   total * 1024,
-			Used:    used * 1024,
-			Free:    free * 1024,
+			Total:   total, // df -B1 reports bytes
+			Used:    used,
+			Free:    free,
 			Percent: pct,
 		})
 	}
