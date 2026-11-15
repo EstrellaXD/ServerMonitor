@@ -267,6 +267,23 @@ Browser --WebSocket---> Nginx (:4829) --proxy---> chi router (:8742)
 - Metrics are stored in-memory (`sync.RWMutex` + `map`) and fanned out to all WebSocket clients via a custom buffered broadcaster
 - Frontend falls back to HTTP polling (`GET /api/systems`) if WebSocket disconnects
 
+## iOS App
+
+`ios/` holds a native SwiftUI client (iOS 27.2+, Swift 6, no third-party dependencies). It uses the same `/api` and `/ws` endpoints as the web UI, on the local network only. XcodeGen generates the Xcode project from `ios/project.yml`; the generated `ServerMonitor.xcodeproj` is not in git.
+
+```bash
+brew install xcodegen
+cd ios
+xcodegen generate
+xcodebuild -scheme ServerMonitor -destination 'platform=iOS Simulator,name=<an iPhone simulator>' build test
+open ServerMonitor.xcodeproj   # set your team under Signing & Capabilities to run on a device
+```
+
+- On first launch the app tries `192.168.31.170:8742`. If that fails, it shows a setup screen. Change the address later in Settings (gear icon).
+- The backend accepts the app's requests when the Host is an IP address, `localhost` or a `*.local` name. Add any other DNS name to `allowed_hosts`.
+- Action buttons appear only for the controls enabled in `config.yaml`. Low-risk actions run at once, mid-risk actions show a confirmation, and high-risk actions (reboot, power off, kill -KILL, delete with files, fan 0 %) require Face ID or the device passcode.
+- `ios/ServerMonitorTests/Fixtures` holds JSON captured from mock mode. The decode tests fail when the wire format changes. To refresh the fixtures, run the backend with `SERVERMONITOR_MOCK_MODE=true` and save `GET /api/systems`, one `/ws` message and one docker logs response again.
+
 ## Docker Image
 
 Pre-built images are available from GitHub Container Registry:

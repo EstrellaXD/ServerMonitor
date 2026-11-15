@@ -1,0 +1,26 @@
+{
+  "nas_backup": {
+    "id": "nas_backup",
+    "name": "Backup NAS",
+    "type": "unas",
+    "status": "offline",
+    "last_updated": "2026-11-15T10:49:39Z",
+    "error": "dial tcp 192.168.1.201:22: connect: no route to host",
+    "controls": [],
+    "metrics": {}
+  },
+  "empty-docker": {
+    "id": "empty-docker",
+    "name": "Empty Docker",
+    "type": "docker",
+    "status": "healthy",
+    "last_updated": "2026-11-15T10:49:39.5Z",
+    "controls": ["container"],
+    "metrics": {
+      "containers": null,
+      "running_count": 0,
+      "stopped_count": 0,
+      "total_count": 0
+    }
+  }
+}

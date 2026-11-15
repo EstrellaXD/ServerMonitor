@@ -1,0 +1,85 @@
+{
+  "container": "postgres",
+  "lines": [
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:28Z postgres: handled request #381 in 5ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:29Z postgres: handled request #382 in 2ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:30Z postgres: handled request #383 in 13ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:31Z postgres: handled request #384 in 29ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:32Z postgres: handled request #385 in 27ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:33Z postgres: handled request #386 in 5ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:34Z postgres: handled request #387 in 40ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:35Z postgres: handled request #388 in 16ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:36Z postgres: handled request #389 in 39ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:37Z postgres: handled request #390 in 30ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:38Z postgres: handled request #391 in 8ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:39Z postgres: handled request #392 in 40ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:40Z postgres: handled request #393 in 20ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:41Z postgres: handled request #394 in 41ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:42Z postgres: handled request #395 in 30ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:43Z postgres: handled request #396 in 19ms"
+    },
+    {
+      "stream": "stderr",
+      "text": "2026-11-15T10:49:44Z postgres: warning: upstream timeout, retrying"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:45Z postgres: handled request #398 in 14ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:46Z postgres: handled request #399 in 15ms"
+    },
+    {
+      "stream": "stdout",
+      "text": "2026-11-15T10:49:47Z postgres: handled request #400 in 28ms"
+    }
+  ]
+}
