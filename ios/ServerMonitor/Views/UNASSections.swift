@@ -46,8 +46,7 @@ struct UNASSections: View {
                                 .font(.caption)
                                 .foregroundStyle(Self.isHealthy(d.status) ? Color.green : Color.orange)
                             if let t = d.temperature {
-                                // Raw value, as the web UI shows it.
-                                Text("\(t == t.rounded() ? String(Int(t)) : String(t))°C")
+                                Text(Format.temperature(t))
                                     .fontDesign(.monospaced)
                                     .foregroundStyle(Level.temperature(TemperatureMetrics(label: d.name, current: t, high: 45, critical: 55)).color)
                             }
