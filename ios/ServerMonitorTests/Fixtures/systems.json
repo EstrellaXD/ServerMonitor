@@ -1,0 +1,434 @@
+{
+  "docker-host": {
+    "id": "docker-host",
+    "name": "Docker Host",
+    "type": "docker",
+    "status": "healthy",
+    "last_updated": "2026-11-15T10:49:44.779674Z",
+    "controls": [
+      "container",
+      "recreate"
+    ],
+    "metrics": {
+      "containers": [
+        {
+          "id": "mock_nginx",
+          "name": "nginx",
+          "image": "nginx:latest",
+          "status": "Up 3 days",
+          "state": "running",
+          "cpu_percent": 4.641077856371678,
+          "memory_usage": 288920501,
+          "memory_limit": 1073741824,
+          "memory_percent": 8.811299492848176
+        },
+        {
+          "id": "mock_postgres",
+          "name": "postgres",
+          "image": "postgres:latest",
+          "status": "Up 3 days",
+          "state": "running",
+          "cpu_percent": 13.69698686225728,
+          "memory_usage": 423527327,
+          "memory_limit": 1073741824,
+          "memory_percent": 16.47239749361355
+        },
+        {
+          "id": "mock_redis",
+          "name": "redis",
+          "image": "redis:latest",
+          "status": "Up 3 days",
+          "state": "running",
+          "cpu_percent": 5.120488954570277,
+          "memory_usage": 128532873,
+          "memory_limit": 1073741824,
+          "memory_percent": 22.05626283609322
+        },
+        {
+          "id": "mock_api-server",
+          "name": "api-server",
+          "image": "api-server:latest",
+          "status": "Up 3 days",
+          "state": "running",
+          "cpu_percent": 13.723604333052622,
+          "memory_usage": 318095455,
+          "memory_limit": 1073741824,
+          "memory_percent": 5.147106190717718
+        },
+        {
+          "id": "mock_worker",
+          "name": "worker",
+          "image": "worker:latest",
+          "status": "Up 3 days",
+          "state": "running",
+          "cpu_percent": 6.2881443023588695,
+          "memory_usage": 286403104,
+          "memory_limit": 1073741824,
+          "memory_percent": 2.6085297473947575
+        },
+        {
+          "id": "mock_monitoring",
+          "name": "monitoring",
+          "image": "monitoring:latest",
+          "status": "Exited (0) 2 hours ago",
+          "state": "stopped",
+          "cpu_percent": 0,
+          "memory_usage": 0,
+          "memory_limit": 1073741824,
+          "memory_percent": 0
+        }
+      ],
+      "running_count": 5,
+      "stopped_count": 1,
+      "total_count": 6
+    }
+  },
+  "linux-server-1": {
+    "id": "linux-server-1",
+    "name": "Linux Server 1",
+    "type": "linux",
+    "status": "healthy",
+    "last_updated": "2026-11-15T10:49:44.779637Z",
+    "controls": [
+      "power",
+      "process",
+      "service",
+      "fan"
+    ],
+    "metrics": {
+      "cpu": {
+        "percent": 27.371869503243854,
+        "cores": [
+          20.233421956398956,
+          8.155936765936964,
+          43.533048953145155,
+          14.786663503913365,
+          12.826661311250126,
+          7.662719563174097,
+          20.047806729828572,
+          21.816936516684933
+        ],
+        "load_avg": [
+          1.0948747801297543,
+          0.9123956501081285,
+          0.7820534143783958
+        ]
+      },
+      "memory": {
+        "total": 17179869184,
+        "used": 5741073545,
+        "available": 11438795639,
+        "percent": 33.41744622127891
+      },
+      "disks": [
+        {
+          "mount": "/",
+          "total": 536870912000,
+          "used": 241591910400,
+          "free": 295279001600,
+          "percent": 44.177147668936726
+        },
+        {
+          "mount": "/home",
+          "total": 1073741824000,
+          "used": 665719930880,
+          "free": 408021893120,
+          "percent": 60.83507216968824
+        }
+      ],
+      "network": {
+        "bytes_sent": 3362632067,
+        "bytes_recv": 13079235123,
+        "upload_rate": 3597817.612639466,
+        "download_rate": 1037390.5663743988
+      },
+      "temperatures": [
+        {
+          "label": "CPU",
+          "current": 55.39676799106156
+        },
+        {
+          "label": "GPU",
+          "current": 46.981880968464914
+        }
+      ],
+      "fans": [
+        {
+          "label": "pwmfan/fan1",
+          "rpm": 4797,
+          "pwm_percent": 52,
+          "mode": "auto"
+        },
+        {
+          "label": "nct6775/fan2",
+          "rpm": 1063
+        }
+      ],
+      "processes": [
+        {
+          "pid": 2978,
+          "name": "qbittorrent-nox",
+          "cpu_percent": 20.634090741602247,
+          "memory_usage": 600000000,
+          "memory_percent": 14.5
+        },
+        {
+          "pid": 1351,
+          "name": "traefik",
+          "cpu_percent": 2.484140135785436,
+          "memory_usage": 45000000,
+          "memory_percent": 1.1
+        },
+        {
+          "pid": 1,
+          "name": "systemd",
+          "cpu_percent": 0.6545191505498082,
+          "memory_usage": 12000000,
+          "memory_percent": 0.3
+        }
+      ],
+      "services": [
+        {
+          "name": "servermonitor",
+          "active_state": "active",
+          "sub_state": "running"
+        }
+      ],
+      "uptime": 851612
+    }
+  },
+  "qbittorrent": {
+    "id": "qbittorrent",
+    "name": "qBittorrent",
+    "type": "qbittorrent",
+    "status": "healthy",
+    "last_updated": "2026-11-15T10:49:44.779687Z",
+    "controls": [
+      "torrent",
+      "delete_files"
+    ],
+    "metrics": {
+      "download_speed": 18742701,
+      "upload_speed": 2746809,
+      "active_downloads": 3,
+      "active_uploads": 0,
+      "total_torrents": 5,
+      "torrents": [
+        {
+          "hash": "0000000000000000000000000000000deadbeef0",
+          "name": "Ubuntu 24.04 LTS",
+          "size": 4831838208,
+          "progress": 100,
+          "download_speed": 0,
+          "upload_speed": 1908506,
+          "state": "stalledUP"
+        },
+        {
+          "hash": "0000000000000000000000000000000991773446",
+          "name": "Debian 12.0",
+          "size": 4080218931,
+          "progress": 100,
+          "download_speed": 0,
+          "upload_speed": 838303,
+          "state": "uploading"
+        },
+        {
+          "hash": "00000000000000000000000000000007d41bb669",
+          "name": "Fedora 40",
+          "size": 2254857830,
+          "progress": 79.19305702082407,
+          "download_speed": 5510948,
+          "upload_speed": 0,
+          "state": "downloading",
+          "eta": 85
+        },
+        {
+          "hash": "00000000000000000000000000000008b2c97559",
+          "name": "Arch Linux",
+          "size": 891289600,
+          "progress": 45.4162332925585,
+          "download_speed": 7286184,
+          "upload_speed": 0,
+          "state": "downloading",
+          "eta": 66
+        },
+        {
+          "hash": "0000000000000000000000000000000d0c2e3005",
+          "name": "Linux Mint 21.3",
+          "size": 3006477107,
+          "progress": 92.6621209560307,
+          "download_speed": 5945569,
+          "upload_speed": 0,
+          "state": "downloading",
+          "eta": 37
+        }
+      ]
+    }
+  },
+  "unas": {
+    "id": "unas",
+    "name": "NAS Storage",
+    "type": "unas",
+    "status": "healthy",
+    "last_updated": "2026-11-15T10:49:44.779697Z",
+    "controls": [
+      "power"
+    ],
+    "metrics": {
+      "pools": [
+        {
+          "name": "/volume1",
+          "status": "online",
+          "total": 17592186044416,
+          "used": 10203467905761,
+          "available": 7388718138655,
+          "percent": 57.99999999999841
+        }
+      ],
+      "disks": [
+        {
+          "name": "sda",
+          "model": "WDC WD80EFZZ",
+          "serial": "WD-MOCK0001",
+          "status": "healthy",
+          "temperature": 36.198936858445705
+        },
+        {
+          "name": "sdb",
+          "model": "WDC WD80EFZZ",
+          "serial": "WD-MOCK0002",
+          "status": "healthy",
+          "temperature": 40.485380224763176
+        },
+        {
+          "name": "sdc",
+          "model": "WDC WD80EFZZ",
+          "serial": "WD-MOCK0003",
+          "status": "healthy",
+          "temperature": 36.926914942718696
+        },
+        {
+          "name": "sdd",
+          "model": "WDC WD80EFZZ",
+          "serial": "WD-MOCK0004",
+          "status": "healthy",
+          "temperature": 39.40525104264482
+        }
+      ],
+      "total_capacity": 17592186044416,
+      "used_capacity": 10203467905761
+    }
+  },
+  "unifi": {
+    "id": "unifi",
+    "name": "UniFi Controller",
+    "type": "unifi",
+    "status": "healthy",
+    "last_updated": "2026-11-15T10:49:44.77969Z",
+    "controls": [
+      "device",
+      "client"
+    ],
+    "metrics": {
+      "devices": [
+        {
+          "name": "UDM Pro",
+          "mac": "74:ac:b9:00:00:01",
+          "model": "UDMPRO",
+          "status": "online",
+          "uptime": 1209600,
+          "temperatures": [
+            {
+              "label": "CPU",
+              "current": 60.37847323695014,
+              "high": 70
+            },
+            {
+              "label": "Local",
+              "current": 48.90795002535721,
+              "high": 70
+            }
+          ]
+        },
+        {
+          "name": "USW Lite 8",
+          "mac": "74:ac:b9:00:00:02",
+          "model": "USL8LP",
+          "status": "online",
+          "uptime": 1100000,
+          "temperatures": null
+        },
+        {
+          "name": "U6 Lite",
+          "mac": "74:ac:b9:00:00:03",
+          "model": "U6-Lite",
+          "status": "online",
+          "uptime": 980000,
+          "temperatures": null
+        }
+      ],
+      "clients_count": 7,
+      "guests_count": 1,
+      "wan_download": 84.06731675417822,
+      "wan_upload": 61.16853438398957,
+      "clients": [
+        {
+          "mac": "3c:22:fb:10:aa:01",
+          "name": "macbook-pro",
+          "ip": "192.168.1.21",
+          "is_guest": false
+        },
+        {
+          "mac": "a4:83:e7:42:bb:02",
+          "name": "iphone",
+          "ip": "192.168.1.22",
+          "is_guest": false
+        },
+        {
+          "mac": "dc:a6:32:01:cc:03",
+          "name": "raspberrypi",
+          "ip": "192.168.1.170",
+          "is_guest": false
+        },
+        {
+          "mac": "48:b0:2d:5e:dd:04",
+          "name": "jetson-orin",
+          "ip": "192.168.1.14",
+          "is_guest": false
+        },
+        {
+          "mac": "f0:18:98:7a:ee:05",
+          "name": "ipad",
+          "ip": "192.168.1.23",
+          "is_guest": false
+        },
+        {
+          "mac": "b8:27:eb:33:ff:06",
+          "name": "printer",
+          "ip": "192.168.1.40",
+          "is_guest": false
+        },
+        {
+          "mac": "70:ee:50:12:a0:07",
+          "name": "thermostat",
+          "ip": "192.168.1.41",
+          "is_guest": false
+        },
+        {
+          "mac": "8a:11:22:33:b0:08",
+          "name": "guest-phone",
+          "ip": "192.168.10.5",
+          "is_guest": true
+        }
+      ],
+      "blocked_clients": [
+        {
+          "mac": "00:11:22:aa:bb:cc",
+          "name": "unknown-tv",
+          "ip": "",
+          "is_guest": false
+        }
+      ]
+    }
+  }
+}

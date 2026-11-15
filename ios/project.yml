@@ -1,0 +1,67 @@
+name: ServerMonitor
+options:
+  bundleIdPrefix: com.estrella
+  deploymentTarget:
+    iOS: "27.2"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: B9UFBBA5QX
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+targets:
+  ServerMonitor:
+    type: application
+    platform: iOS
+    sources:
+      - path: ServerMonitor
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.estrella.servermonitor
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: ServerMonitor/Info.plist
+      properties:
+        CFBundleDisplayName: ServerMonitor
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: ServerMonitor connects to the ServerMonitor backend on your local network to show metrics and run actions.
+        NSFaceIDUsageDescription: ServerMonitor uses Face ID to confirm high-risk actions such as reboot and power off.
+  ServerMonitorTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ServerMonitorTests
+    dependencies:
+      - target: ServerMonitor
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.estrella.servermonitor.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/ServerMonitor.app/ServerMonitor
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  ServerMonitor:
+    build:
+      targets:
+        ServerMonitor: all
+        ServerMonitorTests: [test]
+    test:
+      targets:
+        - ServerMonitorTests
+      gatherCoverageData: false

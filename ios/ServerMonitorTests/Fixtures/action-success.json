@@ -1,0 +1,6 @@
+{
+  "action": "restart",
+  "output": "mock: restart nginx ok",
+  "status": "success",
+  "target": "nginx"
+}
