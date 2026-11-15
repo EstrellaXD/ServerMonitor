@@ -46,7 +46,7 @@ const diskTempClass = (t: number) => (t >= 55 ? 'crit' : t >= 45 ? 'warn' : '')
           <td class="dim">{{ d.model }}</td>
           <td class="dim">{{ d.serial }}</td>
           <td :class="healthClass(d.status)">{{ d.status }}</td>
-          <td class="r" :class="d.temperature != null ? diskTempClass(d.temperature) : 'dim'">{{ d.temperature != null ? `${d.temperature}°C` : '–' }}</td>
+          <td class="r" :class="d.temperature != null ? diskTempClass(d.temperature) : 'dim'">{{ d.temperature != null ? `${d.temperature.toFixed(0)}°C` : '–' }}</td>
         </tr>
       </tbody>
     </table>
