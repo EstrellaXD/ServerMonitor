@@ -2,10 +2,11 @@ import SwiftUI
 
 struct ServersView: View {
     @Environment(MetricsStore.self) private var store
+    @Binding var selection: String?
     @State private var showsSettings = false
 
     var body: some View {
-        List {
+        List(selection: $selection) {
             Section {
                 SummaryRow()
             }

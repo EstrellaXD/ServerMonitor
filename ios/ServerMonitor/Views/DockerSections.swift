@@ -168,13 +168,15 @@ struct DockerLogsSheet: View {
                 ContentUnavailableView("No Output", systemImage: "text.alignleft",
                                        description: Text("The container wrote no log lines."))
             } else {
-                ScrollView([.vertical, .horizontal]) {
+                // Vertical only: long lines wrap. The container margins keep the text clear of the rail.
+                ScrollView {
                     Text(Self.attributed(logs.lines))
                         .font(.caption)
                         .fontDesign(.monospaced)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                        .contentMargins(for: .container, edges: .horizontal)
+                        .padding(.vertical)
                 }
                 .defaultScrollAnchor(.bottomLeading)
                 .safeAreaInset(edge: .bottom) {

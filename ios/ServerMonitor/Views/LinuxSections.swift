@@ -56,7 +56,13 @@ struct LinuxSections: View {
 private struct CPUSection: View {
     let cpu: CPUMetrics
 
-    private let columns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
+    @State private var gridWidth: CGFloat = 0
+
+    /// Two or four columns (HIG: an even count divides cleanly at a fold), at least 120 pt each.
+    private var columns: [GridItem] {
+        let count = gridWidth >= 4 * 120 + 3 * 12 ? 4 : 2
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
+    }
 
     var body: some View {
         Section("CPU") {
@@ -83,6 +89,7 @@ private struct CPUSection: View {
                         .accessibilityElement(children: .combine)
                     }
                 }
+                .onGeometryChange(for: CGFloat.self, of: \.size.width) { gridWidth = $0 }
                 .padding(.vertical, 4)
             }
         }
