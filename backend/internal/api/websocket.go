@@ -12,7 +12,6 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 65536,
-	CheckOrigin:     func(*http.Request) bool { return true },
 }
 
 const (
@@ -22,8 +21,12 @@ const (
 )
 
 func websocketHandler(state *AppState) http.HandlerFunc {
+	up := upgrader
+	up.CheckOrigin = func(r *http.Request) bool {
+		return originAllowed(r.Header.Get("Origin"), state.Manager.AllowedHosts())
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := up.Upgrade(w, r, nil)
 		if err != nil {
 			slog.Error("ws upgrade", "err", err)
 			return

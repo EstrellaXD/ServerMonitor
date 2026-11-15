@@ -40,6 +40,16 @@ type TemperatureMetrics struct {
 type FanMetrics struct {
 	Label string `json:"label"`
 	RPM   int64  `json:"rpm"`
+	// PWMPercent is the hwmon pwm duty cycle (pwmN/255), when the device has one.
+	PWMPercent *float64 `json:"pwm_percent,omitempty"`
+	// Mode is "auto" or "manual"; set only for fans that fan_set can control.
+	Mode string `json:"mode,omitempty"`
+}
+
+type ServiceStatus struct {
+	Name        string `json:"name"`
+	ActiveState string `json:"active_state"`
+	SubState    string `json:"sub_state"`
 }
 
 type ProcessMetrics struct {
@@ -58,6 +68,7 @@ type LinuxMetrics struct {
 	Temperatures []TemperatureMetrics `json:"temperatures"`
 	Fans         []FanMetrics         `json:"fans"`
 	Processes    []ProcessMetrics     `json:"processes"`
+	Services     []ServiceStatus      `json:"services"`
 	Uptime       int64                `json:"uptime"`
 }
 
@@ -117,11 +128,20 @@ type UnifiDevice struct {
 }
 
 type UnifiMetrics struct {
-	Devices      []UnifiDevice `json:"devices"`
-	ClientsCount int32         `json:"clients_count"`
-	GuestsCount  int32         `json:"guests_count"`
-	WANDownload  float64       `json:"wan_download"`
-	WANUpload    float64       `json:"wan_upload"`
+	Devices        []UnifiDevice `json:"devices"`
+	ClientsCount   int32         `json:"clients_count"`
+	GuestsCount    int32         `json:"guests_count"`
+	WANDownload    float64       `json:"wan_download"`
+	WANUpload      float64       `json:"wan_upload"`
+	Clients        []UnifiClient `json:"clients"`
+	BlockedClients []UnifiClient `json:"blocked_clients"`
+}
+
+type UnifiClient struct {
+	MAC     string `json:"mac"`
+	Name    string `json:"name"`
+	IP      string `json:"ip"`
+	IsGuest bool   `json:"is_guest"`
 }
 
 // --- UNAS ---
@@ -148,4 +168,16 @@ type UNASMetrics struct {
 	Disks         []StorageDisk `json:"disks"`
 	TotalCapacity int64         `json:"total_capacity"`
 	UsedCapacity  int64         `json:"used_capacity"`
+}
+
+// --- Docker logs ---
+
+type LogLine struct {
+	Stream string `json:"stream"` // "stdout" or "stderr"
+	Text   string `json:"text"`
+}
+
+type DockerLogs struct {
+	Container string    `json:"container"`
+	Lines     []LogLine `json:"lines"`
 }

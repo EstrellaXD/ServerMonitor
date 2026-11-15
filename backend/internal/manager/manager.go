@@ -16,7 +16,9 @@ import (
 type Manager struct {
 	mu           sync.Mutex
 	collectors   map[string]collectors.Collector
+	systems      map[string]config.SystemConfig // effective config of each collected system
 	pollInterval time.Duration
+	allowedHosts []string
 	store        *store.MetricsStore
 	bus          *broadcast.Broadcaster
 	mockMode     bool
@@ -28,6 +30,7 @@ type Manager struct {
 func New(store *store.MetricsStore, bus *broadcast.Broadcaster, mockMode bool) *Manager {
 	return &Manager{
 		collectors:   make(map[string]collectors.Collector),
+		systems:      make(map[string]config.SystemConfig),
 		pollInterval: 5 * time.Second,
 		store:        store,
 		bus:          bus,
@@ -44,11 +47,16 @@ func (m *Manager) LoadConfig(cfg config.AppConfig) {
 	if cfg.PollInterval > 0 {
 		m.pollInterval = time.Duration(cfg.PollInterval) * time.Second
 	}
+	m.allowedHosts = cfg.AllowedHosts
 	m.collectors = make(map[string]collectors.Collector)
+	m.systems = make(map[string]config.SystemConfig)
 
 	for _, sys := range cfg.Systems {
 		if !sys.Enabled {
 			continue
+		}
+		if m.mockMode {
+			sys = collectors.MockSystemConfig(sys)
 		}
 		col := collectors.New(sys, m.mockMode)
 		if col == nil {
@@ -56,7 +64,25 @@ func (m *Manager) LoadConfig(cfg config.AppConfig) {
 			continue
 		}
 		m.collectors[sys.ID] = col
+		sys.Controls = append([]string{}, sys.Controls...) // never nil on the wire
+		m.systems[sys.ID] = sys
 	}
+}
+
+// System returns the effective config of a collected system: the one the
+// action allowlist is checked against.
+func (m *Manager) System(id string) (config.SystemConfig, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sys, ok := m.systems[id]
+	return sys, ok
+}
+
+// AllowedHosts returns the allowed_hosts list of the loaded config.
+func (m *Manager) AllowedHosts() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.allowedHosts
 }
 
 func (m *Manager) Count() int {
@@ -116,12 +142,14 @@ func (m *Manager) tick(ctx context.Context) {
 	snapshot := make([]struct {
 		id        string
 		collector collectors.Collector
+		controls  []string
 	}, 0, len(m.collectors))
 	for id, c := range m.collectors {
 		snapshot = append(snapshot, struct {
 			id        string
 			collector collectors.Collector
-		}{id, c})
+			controls  []string
+		}{id, c, m.systems[id].Controls})
 	}
 	m.mu.Unlock()
 
@@ -131,6 +159,7 @@ func (m *Manager) tick(ctx context.Context) {
 		}
 		metrics := entry.collector.Collect(ctx)
 		if metrics != nil {
+			metrics.Controls = entry.controls
 			m.store.Update(entry.id, metrics)
 		}
 	}

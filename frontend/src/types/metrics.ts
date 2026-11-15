@@ -39,6 +39,8 @@ export interface TemperatureMetrics {
 export interface FanMetrics {
   label: string
   rpm: number
+  pwm_percent?: number
+  mode?: 'auto' | 'manual'
 }
 
 export interface ProcessMetrics {
@@ -49,6 +51,12 @@ export interface ProcessMetrics {
   memory_percent: number
 }
 
+export interface ServiceStatus {
+  name: string
+  active_state: string
+  sub_state: string
+}
+
 export interface LinuxMetrics {
   cpu: CpuMetrics
   memory: MemoryMetrics
@@ -57,6 +65,7 @@ export interface LinuxMetrics {
   temperatures: TemperatureMetrics[]
   fans: FanMetrics[]
   processes: ProcessMetrics[]
+  services: ServiceStatus[]
   uptime: number
 }
 
@@ -108,8 +117,17 @@ export interface UnifiDevice {
   temperatures: TemperatureMetrics[] | null
 }
 
+export interface UnifiClient {
+  mac: string
+  name: string
+  ip: string
+  is_guest: boolean
+}
+
 export interface UnifiMetrics {
   devices: UnifiDevice[]
+  clients: UnifiClient[]
+  blocked_clients: UnifiClient[]
   clients_count: number
   guests_count: number
   wan_download: number
@@ -149,6 +167,7 @@ export interface SystemMetrics {
   status: SystemStatus
   last_updated: string
   error?: string
+  controls: string[]
   metrics: MetricsData
 }
 

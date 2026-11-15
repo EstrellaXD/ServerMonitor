@@ -1,90 +1,100 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTheme } from '@/composables/useTheme'
 import { useWebSocket } from '@/composables/useWebSocket'
-import ThemeToggle from '@/components/common/ThemeToggle.vue'
-import ConnectionStatus from '@/components/common/ConnectionStatus.vue'
+import { useFilter } from '@/composables/useFilter'
+import { useMetricsStore } from '@/stores/metrics'
+import { formatClock } from '@/composables/useFormatters'
+import SystemNav from '@/components/SystemNav.vue'
 
-useTheme()
+const { isDark, toggleTheme } = useTheme()
 const { connected, reconnecting } = useWebSocket()
+const { query, inputEl, focus } = useFilter()
+const store = useMetricsStore()
+const router = useRouter()
 
 const isOnline = ref(navigator.onLine)
-const handleOnline = () => { isOnline.value = true }
-const handleOffline = () => { isOnline.value = false }
+const filterFocused = ref(false)
+
+const wsState = computed(() => {
+  if (connected.value) return { glyph: '●', cls: 'ok', text: 'ws connected' }
+  if (reconnecting.value) return { glyph: '▲', cls: 'warn', text: 'ws reconnecting · http poll' }
+  return { glyph: '○', cls: 'off', text: 'ws closed' }
+})
+
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
+
+function onKey(e: KeyboardEvent) {
+  if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return
+  if (e.key >= '1' && e.key <= '9') {
+    const s = store.systemsList[Number(e.key) - 1]
+    if (s) router.push(`/system/${s.id}`)
+  } else if (e.key === 'Escape') {
+    router.push('/')
+  } else if (e.key === '/') {
+    e.preventDefault()
+    focus()
+  } else if (e.key === 't') {
+    toggleTheme()
+  }
+}
+
+function onFilterEsc() {
+  if (query.value) query.value = ''
+  else inputEl.value?.blur()
+}
+
+const setOnline = () => { isOnline.value = navigator.onLine }
 
 onMounted(() => {
-  window.addEventListener('online', handleOnline)
-  window.addEventListener('offline', handleOffline)
+  window.addEventListener('keydown', onKey)
+  window.addEventListener('online', setOnline)
+  window.addEventListener('offline', setOnline)
 })
 onUnmounted(() => {
-  window.removeEventListener('online', handleOnline)
-  window.removeEventListener('offline', handleOffline)
+  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('online', setOnline)
+  window.removeEventListener('offline', setOnline)
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-surface-100 dark:bg-surface-950 transition-colors duration-300">
-    <!-- Offline banner -->
-    <div
-      v-if="!isOnline"
-      class="fixed top-0 inset-x-0 z-50 bg-amber-500 text-black text-center text-sm py-1 font-medium"
-    >
-      Offline — showing cached app shell
-    </div>
+  <div class="min-h-screen sm:grid sm:grid-cols-[176px_minmax(0,1fr)]">
+    <SystemNav />
 
-    <!-- Ambient background gradient -->
-    <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-      <div class="absolute -top-40 -right-40 w-80 h-80 bg-primary-500/10 dark:bg-primary-500/5 rounded-full blur-3xl"></div>
-      <div class="absolute top-1/2 -left-40 w-80 h-80 bg-primary-600/10 dark:bg-primary-600/5 rounded-full blur-3xl"></div>
-    </div>
+    <div class="flex min-h-screen min-w-0 flex-col">
+      <main class="flex flex-1 flex-col gap-2.5 px-3 py-2.5 sm:px-4">
+        <router-view />
+      </main>
 
-    <!-- Navbar -->
-    <header class="navbar">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
-          <!-- Logo -->
-          <router-link to="/" class="flex items-center gap-2 sm:gap-3 group">
-            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/25 group-hover:shadow-primary-500/40 transition-shadow">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                <line x1="8" y1="21" x2="16" y2="21"></line>
-                <line x1="12" y1="17" x2="12" y2="21"></line>
-              </svg>
-            </div>
-            <span class="text-lg sm:text-xl font-heading font-semibold text-slate-900 dark:text-white">
-              <span class="hidden xs:inline">Server</span><span class="text-primary-500">Monitor</span>
-            </span>
-          </router-link>
-
-          <!-- Right side controls -->
-          <div class="flex items-center gap-2 sm:gap-4">
-            <ConnectionStatus :connected="connected" :reconnecting="reconnecting" />
-            <div class="w-px h-6 bg-slate-200 dark:bg-white/10 hidden sm:block"></div>
-            <ThemeToggle />
-          </div>
+      <footer class="sticky bottom-0 space-y-1.5 border-t border-line bg-bg px-3 py-2 sm:px-4">
+        <label class="blk flex cursor-text items-baseline overflow-hidden px-2.5 py-1.5">
+          <span class="ok mr-[1ch]">❯</span><span class="dim mr-[1ch]">filter:</span>
+          <input
+            ref="inputEl"
+            v-model="query"
+            class="tin max-w-full"
+            :style="{ width: `${query.length + 1}ch` }"
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="filter rows"
+            @focus="filterFocused = true"
+            @blur="filterFocused = false"
+            @keydown.esc.prevent="onFilterEsc"
+          ><span v-if="!filterFocused" class="caret" aria-hidden="true">&nbsp;</span>
+          <span v-if="!query && !filterFocused" class="dim ml-[1ch] truncate">press / to filter</span>
+        </label>
+        <div class="dim flex flex-wrap justify-between gap-x-4 text-xs">
+          <span>
+            <span :class="wsState.cls">{{ wsState.glyph }}</span> {{ wsState.text }}
+            · updated {{ formatClock(store.lastUpdate) }}
+            <span v-if="!isOnline" class="crit"> · browser offline</span>
+          </span>
+          <span class="hidden sm:inline">[1-9] system · [esc] overview · [/] filter · [t] {{ isDark ? 'light' : 'dark' }}</span>
         </div>
-      </div>
-    </header>
-
-    <!-- Main content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-    </main>
+      </footer>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease-out;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-</style>

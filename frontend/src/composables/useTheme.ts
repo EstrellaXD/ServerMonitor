@@ -1,6 +1,8 @@
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 
-const isDark = ref(true)
+// Dark is the default; only an explicit stored choice switches to light.
+// Read at module load: the immediate watcher below would otherwise overwrite the stored value first.
+const isDark = ref(localStorage.getItem('theme') !== 'light')
 
 export function useTheme() {
   const toggleTheme = () => {
@@ -10,15 +12,6 @@ export function useTheme() {
   const setTheme = (dark: boolean) => {
     isDark.value = dark
   }
-
-  onMounted(() => {
-    const stored = localStorage.getItem('theme')
-    if (stored) {
-      isDark.value = stored === 'dark'
-    } else {
-      isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
-    }
-  })
 
   watch(isDark, (dark) => {
     localStorage.setItem('theme', dark ? 'dark' : 'light')

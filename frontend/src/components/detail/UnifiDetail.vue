@@ -1,96 +1,95 @@
 <script setup lang="ts">
-import type { TemperatureMetrics, UnifiMetrics } from '@/types/metrics'
-import MetricCard from '@/components/common/MetricCard.vue'
+import { computed } from 'vue'
+import type { SystemMetrics, UnifiClient, UnifiMetrics } from '@/types/metrics'
+import { formatUptime } from '@/composables/useFormatters'
+import { useActions } from '@/composables/useActions'
+import { useFilter } from '@/composables/useFilter'
+import { hottest, tempLevel, rowsMeta } from '@/lib/systems'
+import TermBlock from '@/components/term/TermBlock.vue'
+import ActBtn from '@/components/term/ActBtn.vue'
+import ActionPrompt from '@/components/term/ActionPrompt.vue'
 
-defineProps<{
-  metrics: UnifiMetrics
-}>()
+const props = defineProps<{ system: SystemMetrics; metrics: UnifiMetrics }>()
 
-const formatUptime = (seconds: number): string => {
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
+const { matches } = useFilter()
+const deviceRunner = useActions(() => props.system)
+const clientRunner = useActions(() => props.system)
+const blockedRunner = useActions(() => props.system)
 
-  if (days > 0) return `${days}d ${hours}h`
-  if (hours > 0) return `${hours}h`
-  return '< 1h'
-}
+const k = (facet: string) => `${props.system.id}:${facet}`
+const clientMatch = (c: UnifiClient) => matches(c.name, c.ip, c.mac)
 
-// The backend sends the warning threshold (70°C) as `high`.
-const isHot = (t: TemperatureMetrics): boolean => t.high !== undefined && t.current >= t.high
+const devices = computed(() => props.metrics.devices.filter(d => matches(d.name, d.model, d.mac, d.status)))
+const clients = computed(() => props.metrics.clients.filter(clientMatch))
+const blocked = computed(() => props.metrics.blocked_clients.filter(clientMatch))
+const clientName = (c: UnifiClient) => c.name || c.mac
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Overview Cards -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      <MetricCard label="Clients" :value="metrics.clients_count" />
-      <MetricCard label="Guests" :value="metrics.guests_count" />
-      <MetricCard label="WAN Download" :value="metrics.wan_download.toFixed(1)" unit="Mbps" />
-      <MetricCard label="WAN Upload" :value="metrics.wan_upload.toFixed(1)" unit="Mbps" />
-    </div>
+  <TermBlock :id="k('wan')" title="unifi wan" :host="system.id" :meta="`${metrics.devices.length} devices`">
+    <div><span class="cy">↓ {{ metrics.wan_download.toFixed(1) }} Mbps</span>&nbsp; <span class="mg">↑ {{ metrics.wan_upload.toFixed(1) }} Mbps</span></div>
+    <div class="dim">{{ metrics.clients_count }} clients · {{ metrics.guests_count }} guests</div>
+  </TermBlock>
 
-    <!-- Devices List -->
-    <div class="card overflow-hidden">
-      <div class="p-5 border-b border-slate-200 dark:border-slate-700">
-        <h3 class="text-lg font-medium text-slate-900 dark:text-white">Network Devices</h3>
-      </div>
-
-      <div v-if="metrics.devices.length === 0" class="p-8 text-center text-slate-500 dark:text-slate-400">
-        No devices found
-      </div>
-
-      <div v-else class="divide-y divide-slate-200 dark:divide-slate-700">
-        <div
-          v-for="device in metrics.devices"
-          :key="device.mac"
-          class="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-        >
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div
-                class="w-10 h-10 rounded-lg flex items-center justify-center"
-                :class="device.status === 'online' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-slate-100 dark:bg-slate-700'"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="device.status === 'online' ? 'text-green-500' : 'text-slate-400'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
-                  <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
-                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-                  <line x1="12" y1="20" x2="12.01" y2="20"></line>
-                </svg>
-              </div>
-              <div>
-                <div class="font-medium text-slate-900 dark:text-white">{{ device.name }}</div>
-                <div class="text-sm text-slate-500 dark:text-slate-400">{{ device.model }}</div>
-              </div>
-            </div>
-            <div class="text-right">
-              <span
-                class="px-2 py-1 text-xs font-medium rounded-full"
-                :class="device.status === 'online'
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'"
-              >
-                {{ device.status }}
+  <TermBlock :id="k('devices')" title="unifi devices" :meta="rowsMeta(devices.length, metrics.devices.length)">
+    <table class="tbl">
+      <thead><tr><th>NAME</th><th>MODEL</th><th>STATUS</th><th class="r">UPTIME</th><th class="r">TEMP</th><th v-if="deviceRunner.can('restart_device')" /></tr></thead>
+      <tbody>
+        <tr v-for="d in devices" :key="d.mac">
+          <td>{{ d.name }}</td>
+          <td class="dim">{{ d.model }}</td>
+          <td :class="d.status === 'online' ? 'ok' : 'off'">{{ d.status }}</td>
+          <td class="r">{{ d.status === 'online' ? formatUptime(d.uptime) : '–' }}</td>
+          <td class="r">
+            <template v-if="hottest(d.temperatures)">
+              <span :class="tempLevel(hottest(d.temperatures)!)" :title="(d.temperatures ?? []).map(t => `${t.label} ${t.current.toFixed(0)}°C`).join(', ')">
+                {{ hottest(d.temperatures)!.current.toFixed(0) }}°C
               </span>
-              <div v-if="device.uptime > 0" class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                Uptime: {{ formatUptime(device.uptime) }}
-              </div>
-            </div>
-          </div>
-          <div v-if="device.temperatures?.length" class="flex flex-wrap gap-2 mt-3 pl-[3.25rem]">
-            <span
-              v-for="temp in device.temperatures"
-              :key="temp.label"
-              class="px-2 py-1 text-xs font-medium rounded-md tabular-nums"
-              :class="isHot(temp)
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
-                : 'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300'"
-            >
-              {{ temp.label }} {{ temp.current.toFixed(1) }}°C
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+            </template>
+            <span v-else class="dim">–</span>
+          </td>
+          <td v-if="deviceRunner.can('restart_device')">
+            <ActBtn :runner="deviceRunner" action="restart_device" :target="d.mac" text="restart" :label="`restart device ${d.name}`" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <ActionPrompt :runner="deviceRunner" />
+  </TermBlock>
+
+  <TermBlock :id="k('clients')" title="unifi clients" :meta="rowsMeta(clients.length, metrics.clients.length)">
+    <table class="tbl">
+      <thead><tr><th>NAME</th><th>IP</th><th>MAC</th><th /><th v-if="clientRunner.can('kick')" /></tr></thead>
+      <tbody>
+        <tr v-for="c in clients" :key="c.mac">
+          <td class="max-w-[24ch] truncate">{{ clientName(c) }}</td>
+          <td>{{ c.ip || '–' }}</td>
+          <td class="dim">{{ c.mac }}</td>
+          <td class="warn">{{ c.is_guest ? 'guest' : '' }}</td>
+          <td v-if="clientRunner.can('kick')">
+            <ActBtn :runner="clientRunner" action="kick" :target="c.mac" :label="`kick ${clientName(c)}`" />
+            <ActBtn :runner="clientRunner" action="block" :target="c.mac" :label="`block ${clientName(c)}`" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <ActionPrompt :runner="clientRunner" />
+  </TermBlock>
+
+  <TermBlock :id="k('blocked')" title="unifi blocked" :meta="rowsMeta(blocked.length, metrics.blocked_clients.length)">
+    <div v-if="!metrics.blocked_clients.length" class="dim">(none)</div>
+    <table v-else class="tbl">
+      <thead><tr><th>NAME</th><th>MAC</th><th v-if="blockedRunner.can('unblock')" /></tr></thead>
+      <tbody>
+        <tr v-for="c in blocked" :key="c.mac">
+          <td class="max-w-[24ch] truncate">{{ clientName(c) }}</td>
+          <td class="dim">{{ c.mac }}</td>
+          <td v-if="blockedRunner.can('unblock')">
+            <ActBtn :runner="blockedRunner" action="unblock" :target="c.mac" :label="`unblock ${clientName(c)}`" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <ActionPrompt :runner="blockedRunner" />
+  </TermBlock>
 </template>

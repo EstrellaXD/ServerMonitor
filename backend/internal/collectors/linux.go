@@ -2,6 +2,7 @@ package collectors
 
 import (
 	"context"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,9 +25,19 @@ const linuxCombinedCmd = `echo "===STAT===" && cat /proc/stat && ` +
 	`temp=$(cat $zone/temp 2>/dev/null); ` +
 	`[ -n "$temp" ] && echo "$name:$temp"; done 2>/dev/null || true) && ` +
 	// find, not a glob: under zsh (nomatch) an unmatched glob aborts the whole command.
-	`echo "===FANS===" && (for f in $(find -L /sys/class/hwmon/ -mindepth 2 -maxdepth 2 -name 'fan*_input' 2>/dev/null); do [ -r "$f" ] || continue; ` +
+	// C is the hwmon device that fan_set and fan_auto control; only its fan1 is marked "ctl".
+	`echo "===FANS===" && C=` + fanHwmonDirCmd + ` && ` +
+	`(for f in $(find -L /sys/class/hwmon/ -mindepth 2 -maxdepth 2 -name 'fan*_input' 2>/dev/null); do [ -r "$f" ] || continue; ` +
 	`label=$(cat ${f%_input}_label 2>/dev/null || echo "$(cat ${f%/*}/name 2>/dev/null)/$(basename ${f%_input})"); ` +
-	`echo "$label:$(cat $f)"; done 2>/dev/null || true) && ` +
+	`n=${f##*/fan}; n=${n%_input}; ` +
+	`echo "$label:$(cat $f):$(cat ${f%/*}/pwm$n 2>/dev/null):$([ "${f%/*}" = "$C" ] && [ "$n" = 1 ] && echo ctl)"; done 2>/dev/null || true) && ` +
+	// A pwmfan device with pwm1 but no fan1_input (Jetson): the tach, if any, is the pwm_tach hwmon's rpm file.
+	`(for h in $(find -L /sys/class/hwmon/ -mindepth 1 -maxdepth 1 2>/dev/null); do ` +
+	`[ "$(cat $h/name 2>/dev/null)" = ` + fanHwmonName + ` ] && [ -r $h/pwm1 ] && [ ! -e $h/fan1_input ] || continue; rpm=0; ` +
+	`for t in $(find -L /sys/class/hwmon/ -mindepth 2 -maxdepth 2 -name rpm 2>/dev/null); do ` +
+	`[ "$(cat ${t%/*}/name 2>/dev/null)" = pwm_tach ] && rpm=$(cat $t 2>/dev/null || echo 0); done; ` +
+	`echo "` + fanHwmonName + `:$rpm:$(cat $h/pwm1):$([ "$h" = "$C" ] && echo ctl)"; done 2>/dev/null || true) && ` +
+	`echo "===FANMODE===" && ([ -e ` + fanStateFile + ` ] && echo manual || echo auto) && ` +
 	`echo "===PAGESIZE===" && (getconf PAGESIZE 2>/dev/null || echo 4096) && ` +
 	`echo "===PROCS===" && (cat /proc/[0-9]*/stat 2>/dev/null || true)`
 
@@ -55,6 +66,7 @@ type LinuxCollector struct {
 	prevTime    float64
 	hasPrevTime bool
 	prevProcs   map[int]int64 // pid → utime+stime ticks
+	cmd         string        // linuxCombinedCmd plus the configured services section
 }
 
 type procSample struct {
@@ -69,7 +81,41 @@ func NewLinux(id, name string, cfg *config.LinuxSystemConfig) *LinuxCollector {
 		id:   id,
 		name: name,
 		ssh:  NewSSHConnection(cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.KeyPath),
+		cmd:  linuxCombinedCmd + servicesSection(cfg.Services),
 	}
+}
+
+// servicesSection queries each configured unit. Unit names are validated
+// at config load, so they are safe to interpolate.
+func servicesSection(units []string) string {
+	if len(units) == 0 {
+		return ""
+	}
+	return ` && echo "===SERVICES===" && (for u in ` + strings.Join(units, " ") +
+		`; do echo "@$u"; systemctl show -p ActiveState -p SubState "$u" 2>/dev/null; done || true)`
+}
+
+// parseServices reads "@unit" header lines, each followed by the
+// ActiveState= and SubState= properties of that unit.
+func parseServices(out string) []models.ServiceStatus {
+	services := []models.ServiceStatus{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if name, ok := strings.CutPrefix(line, "@"); ok {
+			services = append(services, models.ServiceStatus{Name: name})
+			continue
+		}
+		if len(services) == 0 {
+			continue
+		}
+		cur := &services[len(services)-1]
+		if v, ok := strings.CutPrefix(line, "ActiveState="); ok {
+			cur.ActiveState = v
+		} else if v, ok := strings.CutPrefix(line, "SubState="); ok {
+			cur.SubState = v
+		}
+	}
+	return services
 }
 
 func parseCombinedOutput(output string) map[string]string {
@@ -284,21 +330,55 @@ func parseThermalZones(out string) []models.TemperatureMetrics {
 	return temps
 }
 
-// parseFans reads "label:rpm" lines. The label may itself contain ':'.
-func parseFans(out string) []models.FanMetrics {
+// fanStateFile marks manual fan control; fan_set creates it, fan_auto removes it.
+const fanStateFile = "/run/servermonitor-fan.state"
+
+// fanHwmonName is the hwmon device name that fan_set and fan_auto control.
+const fanHwmonName = "pwmfan"
+
+// fanHwmonDirCmd prints the first (sorted) hwmon directory named
+// fanHwmonName, or nothing. The collector and the fan scripts both use it,
+// so the fan marked controllable is the one the scripts write. It uses find,
+// not a glob, so it also works under zsh.
+const fanHwmonDirCmd = `$(for d in $(find -L /sys/class/hwmon/ -mindepth 1 -maxdepth 1 -name hwmon\* 2>/dev/null | sort); do ` +
+	`[ "$(cat $d/name 2>/dev/null)" = ` + fanHwmonName + ` ] && { echo $d; break; }; done; true)`
+
+// parseFans reads "label:rpm:pwm:ctl" lines. The label may itself contain
+// ':', so the other fields are cut from the right. pwm may be empty. ctl is
+// "ctl" only for the one fan that fan_set and fan_auto control; mode ("auto"
+// or "manual") applies only to that fan.
+func parseFans(out, mode string) []models.FanMetrics {
 	fans := []models.FanMetrics{}
 	for _, line := range strings.Split(out, "\n") {
-		i := strings.LastIndexByte(line, ':')
-		if i <= 0 {
+		rest, ctl, ok1 := cutLast(line, ':')
+		rest, pwmStr, ok2 := cutLast(rest, ':')
+		label, rpmStr, ok3 := cutLast(rest, ':')
+		if !ok1 || !ok2 || !ok3 || strings.TrimSpace(label) == "" {
 			continue
 		}
-		rpm, err := strconv.ParseInt(strings.TrimSpace(line[i+1:]), 10, 64)
+		rpm, err := strconv.ParseInt(strings.TrimSpace(rpmStr), 10, 64)
 		if err != nil {
 			continue
 		}
-		fans = append(fans, models.FanMetrics{Label: strings.TrimSpace(line[:i]), RPM: rpm})
+		fan := models.FanMetrics{Label: strings.TrimSpace(label), RPM: rpm}
+		if pwm, err := strconv.ParseInt(strings.TrimSpace(pwmStr), 10, 64); err == nil {
+			pct := math.Round(float64(pwm)*1000/255) / 10
+			fan.PWMPercent = &pct
+		}
+		if strings.TrimSpace(ctl) == "ctl" {
+			fan.Mode = mode
+		}
+		fans = append(fans, fan)
 	}
 	return fans
+}
+
+func cutLast(s string, sep byte) (before, after string, found bool) {
+	i := strings.LastIndexByte(s, sep)
+	if i < 0 {
+		return s, "", false
+	}
+	return s[:i], s[i+1:], true
 }
 
 // parseProcStats parses concatenated /proc/[pid]/stat lines. The comm field
@@ -405,7 +485,7 @@ func linuxStatus(m models.LinuxMetrics) models.SystemStatus {
 func (c *LinuxCollector) Collect(ctx context.Context) *models.SystemMetrics {
 	currentTime := float64(time.Now().UnixNano()) / 1e9
 
-	output, err := c.ssh.Run(ctx, linuxCombinedCmd)
+	output, err := c.ssh.Run(ctx, c.cmd)
 	if err != nil {
 		c.ssh.Close()
 		return models.NewErrorMetrics(c.id, c.name, models.TypeLinux, err.Error())
@@ -478,8 +558,9 @@ func (c *LinuxCollector) Collect(ctx context.Context) *models.SystemMetrics {
 			DownloadRate: downloadRate,
 		},
 		Temperatures: temps,
-		Fans:         parseFans(sections["FANS"]),
+		Fans:         parseFans(sections["FANS"], strings.TrimSpace(sections["FANMODE"])),
 		Processes:    processes,
+		Services:     parseServices(sections["SERVICES"]),
 		Uptime:       parseUptime(sections["UPTIME"]),
 	}
 

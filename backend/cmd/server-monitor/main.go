@@ -27,8 +27,11 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 	slog.Info("starting ServerMonitor", "host", settings.Host, "port", settings.Port, "mock", settings.MockMode)
 
-	cfg := config.Load(settings.ConfigPath)
-	if err := cfg.Validate(); err != nil {
+	cfg, err := config.Load(settings.ConfigPath)
+	if err == nil {
+		err = cfg.Validate()
+	}
+	if err != nil {
 		slog.Error("invalid config", "err", err)
 		os.Exit(1)
 	}
@@ -39,7 +42,7 @@ func main() {
 	mgr.LoadConfig(cfg)
 
 	staticDir := envOr("SERVERMONITOR_STATIC_DIR", "/app/static")
-	state := api.NewAppState(st, mgr, settings, bus, cfg.EnabledSystemConfigs())
+	state := api.NewAppState(st, mgr, settings, bus)
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

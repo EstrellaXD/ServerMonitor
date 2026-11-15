@@ -20,13 +20,17 @@ type Collector interface {
 // mock collector is returned for supported types.
 func New(sys config.SystemConfig, mockMode bool) Collector {
 	if mockMode {
-		switch sys.Type {
-		case "linux":
-			return NewMockLinux(sys.ID, sys.Name)
-		case "docker":
+		switch cfg := sys.Config.(type) {
+		case *config.LinuxSystemConfig:
+			return NewMockLinux(sys.ID, sys.Name, cfg.Services)
+		case *config.DockerSystemConfig:
 			return NewMockDocker(sys.ID, sys.Name)
-		case "qbittorrent":
+		case *config.QBittorrentSystemConfig:
 			return NewMockQBittorrent(sys.ID, sys.Name)
+		case *config.UnifiSystemConfig:
+			return NewMockUnifi(sys.ID, sys.Name)
+		case *config.UNASSystemConfig:
+			return NewMockUNAS(sys.ID, sys.Name)
 		}
 		return nil
 	}

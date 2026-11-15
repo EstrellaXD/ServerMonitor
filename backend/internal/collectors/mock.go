@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"time"
 
+	"github.com/EstrellaXD/ServerMonitor/backend/internal/config"
 	"github.com/EstrellaXD/ServerMonitor/backend/internal/models"
 )
 
@@ -16,15 +17,17 @@ type MockLinuxCollector struct {
 	baseCPU  float64
 	baseMem  float64
 	uptime   int64
+	services []string
 }
 
-func NewMockLinux(id, name string) *MockLinuxCollector {
+func NewMockLinux(id, name string, services []string) *MockLinuxCollector {
 	return &MockLinuxCollector{
-		id:      id,
-		name:    name,
-		baseCPU: 10 + rand.Float64()*30,
-		baseMem: 30 + rand.Float64()*30,
-		uptime:  86400 + rand.Int64N(864000-86400),
+		id:       id,
+		name:     name,
+		services: services,
+		baseCPU:  10 + rand.Float64()*30,
+		baseMem:  30 + rand.Float64()*30,
+		uptime:   86400 + rand.Int64N(864000-86400),
 	}
 }
 
@@ -89,14 +92,16 @@ func (c *MockLinuxCollector) Collect(_ context.Context) *models.SystemMetrics {
 			{Label: "GPU", Current: 40 + (-5 + rand.Float64()*15)},
 		},
 		Fans: []models.FanMetrics{
-			{Label: "pwmfan/fan1", RPM: 3000 + rand.Int64N(2000)},
+			{Label: "pwmfan/fan1", RPM: 3000 + rand.Int64N(2000), PWMPercent: ptr(40 + float64(rand.IntN(20))), Mode: "auto"},
+			{Label: "nct6775/fan2", RPM: 900 + rand.Int64N(200)},
 		},
 		Processes: []models.ProcessMetrics{
 			{PID: 2978, Name: "qbittorrent-nox", CPUPercent: rand.Float64() * 40, MemoryUsage: 600_000_000, MemoryPercent: 14.5},
 			{PID: 1351, Name: "traefik", CPUPercent: rand.Float64() * 5, MemoryUsage: 45_000_000, MemoryPercent: 1.1},
 			{PID: 1, Name: "systemd", CPUPercent: rand.Float64(), MemoryUsage: 12_000_000, MemoryPercent: 0.3},
 		},
-		Uptime: c.uptime,
+		Services: mockServices(c.services),
+		Uptime:   c.uptime,
 	}
 	c.uptime += 5
 
@@ -274,7 +279,7 @@ func (c *MockQBittorrentCollector) Collect(_ context.Context) *models.SystemMetr
 			eta = &v
 		}
 		infos = append(infos, models.TorrentInfo{
-			Hash:          fmt.Sprintf("%032x", uint64(len(t.name))*0xdeadbeef+uint64(idx)),
+			Hash:          fmt.Sprintf("%040x", uint64(len(t.name))*0xdeadbeef+uint64(idx)),
 			Name:          t.name,
 			Size:          t.size,
 			Progress:      t.progress,
@@ -303,3 +308,158 @@ func (c *MockQBittorrentCollector) Collect(_ context.Context) *models.SystemMetr
 }
 
 func (c *MockQBittorrentCollector) Close() {}
+
+func ptr[T any](v T) *T { return &v }
+
+// mockServices reports every configured unit as running.
+func mockServices(units []string) []models.ServiceStatus {
+	out := make([]models.ServiceStatus, 0, len(units))
+	for _, u := range units {
+		out = append(out, models.ServiceStatus{Name: u, ActiveState: "active", SubState: "running"})
+	}
+	return out
+}
+
+// MockSystemConfig returns the config a system runs with in mock mode: every
+// control of its type is enabled, and a Linux system without services gets
+// one, so that the whole UI can be exercised.
+func MockSystemConfig(sys config.SystemConfig) config.SystemConfig {
+	sys.Controls = config.AllControls(sys.Type)
+	if lc, ok := sys.Config.(*config.LinuxSystemConfig); ok && len(lc.Services) == 0 {
+		c := *lc
+		c.Services = []string{"servermonitor"}
+		sys.Config = &c
+	}
+	return sys
+}
+
+// --- Mock UniFi ---
+
+type MockUnifiCollector struct {
+	id, name string
+}
+
+func NewMockUnifi(id, name string) *MockUnifiCollector {
+	return &MockUnifiCollector{id: id, name: name}
+}
+
+var mockUnifiClients = []models.UnifiClient{
+	{MAC: "3c:22:fb:10:aa:01", Name: "macbook-pro", IP: "192.168.1.21"},
+	{MAC: "a4:83:e7:42:bb:02", Name: "iphone", IP: "192.168.1.22"},
+	{MAC: "dc:a6:32:01:cc:03", Name: "raspberrypi", IP: "192.168.1.170"},
+	{MAC: "48:b0:2d:5e:dd:04", Name: "jetson-orin", IP: "192.168.1.14"},
+	{MAC: "f0:18:98:7a:ee:05", Name: "ipad", IP: "192.168.1.23"},
+	{MAC: "b8:27:eb:33:ff:06", Name: "printer", IP: "192.168.1.40"},
+	{MAC: "70:ee:50:12:a0:07", Name: "thermostat", IP: "192.168.1.41"},
+	{MAC: "8a:11:22:33:b0:08", Name: "guest-phone", IP: "192.168.10.5", IsGuest: true},
+}
+
+func (c *MockUnifiCollector) Collect(_ context.Context) *models.SystemMetrics {
+	high := unifiTempWarning
+	devices := []models.UnifiDevice{
+		{Name: "UDM Pro", MAC: "74:ac:b9:00:00:01", Model: "UDMPRO", Status: "online", Uptime: 1_209_600,
+			Temperatures: []models.TemperatureMetrics{
+				{Label: "CPU", Current: 55 + rand.Float64()*8, High: &high},
+				{Label: "Local", Current: 45 + rand.Float64()*5, High: &high},
+			}},
+		{Name: "USW Lite 8", MAC: "74:ac:b9:00:00:02", Model: "USL8LP", Status: "online", Uptime: 1_100_000},
+		{Name: "U6 Lite", MAC: "74:ac:b9:00:00:03", Model: "U6-Lite", Status: "online", Uptime: 980_000},
+	}
+	m := models.UnifiMetrics{
+		Devices:        devices,
+		ClientsCount:   7,
+		GuestsCount:    1,
+		WANDownload:    20 + rand.Float64()*480,
+		WANUpload:      5 + rand.Float64()*95,
+		Clients:        mockUnifiClients,
+		BlockedClients: []models.UnifiClient{{MAC: "00:11:22:aa:bb:cc", Name: "unknown-tv", IP: ""}},
+	}
+	return &models.SystemMetrics{
+		ID:          c.id,
+		Name:        c.name,
+		Type:        models.TypeUnifi,
+		Status:      unifiStatus(m),
+		LastUpdated: time.Now().UTC(),
+		Metrics:     m,
+	}
+}
+
+func (c *MockUnifiCollector) Close() {}
+
+// --- Mock UNAS ---
+
+type MockUNASCollector struct {
+	id, name string
+}
+
+func NewMockUNAS(id, name string) *MockUNASCollector {
+	return &MockUNASCollector{id: id, name: name}
+}
+
+func (c *MockUNASCollector) Collect(_ context.Context) *models.SystemMetrics {
+	total := gib(16 * 1024)
+	used := int64(float64(total) * 0.58)
+	disks := make([]models.StorageDisk, 0, 4)
+	for i := range 4 {
+		disks = append(disks, models.StorageDisk{
+			Name:        fmt.Sprintf("sd%c", 'a'+i),
+			Model:       "WDC WD80EFZZ",
+			Serial:      fmt.Sprintf("WD-MOCK%04d", i+1),
+			Status:      "healthy",
+			Temperature: ptr(36 + rand.Float64()*6),
+		})
+	}
+	m := models.UNASMetrics{
+		Pools: []models.StoragePool{{
+			Name: "/volume1", Status: "online", Total: total, Used: used, Available: total - used,
+			Percent: float64(used) / float64(total) * 100,
+		}},
+		Disks:         disks,
+		TotalCapacity: total,
+		UsedCapacity:  used,
+	}
+	return &models.SystemMetrics{
+		ID:          c.id,
+		Name:        c.name,
+		Type:        models.TypeUnas,
+		Status:      unasStatus(m),
+		LastUpdated: time.Now().UTC(),
+		Metrics:     m,
+	}
+}
+
+func (c *MockUNASCollector) Close() {}
+
+// --- Mock actor ---
+
+// mockActor simulates every action. The allowlist and validation run before
+// it, exactly as for a real actor.
+type mockActor struct{}
+
+func (mockActor) Run(ctx context.Context, a Action) (string, error) {
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-time.After(300 * time.Millisecond):
+	}
+	if a.Target == "" {
+		return fmt.Sprintf("mock: %s ok", a.Name), nil
+	}
+	return fmt.Sprintf("mock: %s %s ok", a.Name, a.Target), nil
+}
+
+func (mockActor) Logs(_ context.Context, name string, tail int) ([]models.LogLine, error) {
+	const total = 400
+	n := min(tail, total)
+	lines := make([]models.LogLine, 0, n)
+	start := time.Now().Add(-time.Duration(n) * time.Second).UTC()
+	for i := range n {
+		ts := start.Add(time.Duration(i) * time.Second).Format(time.RFC3339)
+		line := models.LogLine{Stream: "stdout", Text: fmt.Sprintf("%s %s: handled request #%d in %dms", ts, name, total-n+i+1, 2+rand.IntN(40))}
+		if i%17 == 16 {
+			line = models.LogLine{Stream: "stderr", Text: fmt.Sprintf("%s %s: warning: upstream timeout, retrying", ts, name)}
+		}
+		lines = append(lines, line)
+	}
+	return lines, nil
+}
