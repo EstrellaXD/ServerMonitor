@@ -1,299 +1,134 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { LinuxMetrics } from '@/types/metrics'
-import ProgressBar from '@/components/charts/ProgressBar.vue'
+import type { LinuxMetrics, SystemMetrics } from '@/types/metrics'
+import { formatBytes, formatPercent, formatSpeed, formatUptime } from '@/composables/useFormatters'
+import { useActions } from '@/composables/useActions'
+import { useFilter } from '@/composables/useFilter'
+import { tempLevel, rowsMeta } from '@/lib/systems'
+import TermBlock from '@/components/term/TermBlock.vue'
+import TextBar from '@/components/term/TextBar.vue'
+import ActBtn from '@/components/term/ActBtn.vue'
+import ActionPrompt from '@/components/term/ActionPrompt.vue'
+import FanBlock from './FanBlock.vue'
+import PowerBlock from './PowerBlock.vue'
 
-const props = defineProps<{
-  metrics: LinuxMetrics
-}>()
+const props = defineProps<{ system: SystemMetrics; metrics: LinuxMetrics }>()
 
-const formatUptime = (seconds: number): string => {
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
+const { matches } = useFilter()
+const procRunner = useActions(() => props.system)
+const svcRunner = useActions(() => props.system)
 
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
-}
+const k = (facet: string) => `${props.system.id}:${facet}`
+const loadAvg = computed(() => props.metrics.cpu.load_avg.map(v => v.toFixed(2)).join(' '))
+const disks = computed(() => props.metrics.disks.filter(d => matches(d.mount)))
+const temps = computed(() => props.metrics.temperatures.filter(t => matches(t.label)))
+const procs = computed(() => props.metrics.processes.filter(p => matches(p.pid, p.name)))
+const services = computed(() => props.metrics.services.filter(s => matches(s.name, s.active_state, s.sub_state)))
 
-const formatBytes = (bytes: number): string => {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
-  }
-  return `${size.toFixed(1)} ${units[i]}`
-}
 
-const formatSpeed = (bytesPerSec: number): string => {
-  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`
-  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`
-  return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
-}
-
-const uptime = computed(() => formatUptime(props.metrics.uptime))
+const serviceClass = (state: string) =>
+  state === 'active' ? 'ok' : state === 'failed' ? 'crit' : state === 'activating' || state === 'deactivating' ? 'warn' : 'off'
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Overview Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="card p-5">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="icon-box icon-box-primary">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-primary-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-              <rect x="9" y="9" width="6" height="6"></rect>
-              <line x1="9" y1="1" x2="9" y2="4"></line>
-              <line x1="15" y1="1" x2="15" y2="4"></line>
-              <line x1="9" y1="20" x2="9" y2="23"></line>
-              <line x1="15" y1="20" x2="15" y2="23"></line>
-              <line x1="20" y1="9" x2="23" y2="9"></line>
-              <line x1="20" y1="14" x2="23" y2="14"></line>
-              <line x1="1" y1="9" x2="4" y2="9"></line>
-              <line x1="1" y1="14" x2="4" y2="14"></line>
-            </svg>
-          </div>
-          <div class="metric-label">CPU Usage</div>
-        </div>
-        <div class="metric-value-lg">{{ metrics.cpu.percent.toFixed(1) }}%</div>
-        <ProgressBar :value="metrics.cpu.percent" :max="100" size="sm" class="mt-3" />
-      </div>
-
-      <div class="card p-5">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="icon-box icon-box-success">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M6 15v-3M10 15v-3M14 15v-3M18 15v-3M6 9V6M10 9V6M14 9V6M18 9V6"></path>
-            </svg>
-          </div>
-          <div class="metric-label">Memory</div>
-        </div>
-        <div class="metric-value-lg">{{ metrics.memory.percent.toFixed(1) }}%</div>
-        <ProgressBar :value="metrics.memory.percent" :max="100" size="sm" class="mt-3" />
-      </div>
-
-      <div class="card p-5">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="icon-box bg-violet-500/10 dark:bg-violet-500/20">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-violet-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-          </div>
-          <div class="metric-label">Uptime</div>
-        </div>
-        <div class="metric-value-lg font-mono">{{ uptime }}</div>
-      </div>
-
-      <div class="card p-5">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="icon-box bg-amber-500/10 dark:bg-amber-500/20">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-            </svg>
-          </div>
-          <div class="metric-label">Load Average</div>
-        </div>
-        <div class="metric-value-lg font-mono">
-          {{ metrics.cpu.load_avg.length > 0 ? metrics.cpu.load_avg[0].toFixed(2) : '0.00' }}
-        </div>
-        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          {{ metrics.cpu.load_avg.slice(0, 3).map(l => l.toFixed(2)).join(' / ') }}
-        </div>
+  <TermBlock :id="k('cpu')" title="cpu" :host="system.id" :meta="`${metrics.cpu.cores.length} cores · up ${formatUptime(metrics.uptime)}`">
+    <div class="grid grid-cols-[5ch_auto_7ch] justify-start gap-x-2">
+      <span>all</span><TextBar :percent="metrics.cpu.percent" /><span class="text-right">{{ formatPercent(metrics.cpu.percent) }}</span>
+    </div>
+    <div class="dim mb-1">load {{ loadAvg }}</div>
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(24ch,1fr))] gap-x-4">
+      <div v-for="(c, i) in metrics.cpu.cores" :key="i" class="grid grid-cols-[4ch_auto_5ch] justify-start gap-x-1">
+        <span class="dim">c{{ i }}</span><TextBar :percent="c" :width="12" /><span class="text-right">{{ c.toFixed(0) }}%</span>
       </div>
     </div>
+  </TermBlock>
 
-    <!-- CPU Cores -->
-    <div v-if="metrics.cpu.cores.length > 0" class="card p-4 sm:p-6">
-      <h3 class="section-title mb-4">CPU Cores</h3>
-      <div class="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-4">
-        <div v-for="(percent, index) in metrics.cpu.cores" :key="index" class="text-center">
-          <div class="relative w-12 h-12 mx-auto mb-2">
-            <svg class="w-12 h-12 transform -rotate-90">
-              <circle
-                cx="24" cy="24" r="20"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                class="text-slate-200 dark:text-surface-800"
-              />
-              <circle
-                cx="24" cy="24" r="20"
-                stroke="currentColor"
-                stroke-width="4"
-                fill="none"
-                :stroke-dasharray="`${percent * 1.256} 999`"
-                class="text-primary-500 transition-all duration-500"
-              />
-            </svg>
-            <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-slate-700 dark:text-slate-300">
-              {{ percent.toFixed(0) }}%
-            </span>
-          </div>
-          <div class="text-xs text-slate-500 dark:text-slate-400">Core {{ index }}</div>
-        </div>
-      </div>
+  <TermBlock :id="k('mem')" title="free -h" :meta="`${formatBytes(metrics.memory.total)} total`">
+    <div class="grid grid-cols-[5ch_auto_7ch] justify-start gap-x-2">
+      <span>mem</span><TextBar :percent="metrics.memory.percent" /><span class="text-right">{{ formatPercent(metrics.memory.percent) }}</span>
     </div>
+    <div class="dim">used {{ formatBytes(metrics.memory.used) }} · avail {{ formatBytes(metrics.memory.available) }}</div>
+  </TermBlock>
 
-    <!-- Memory -->
-    <div class="card p-4 sm:p-6">
-      <h3 class="section-title mb-4">Memory</h3>
-      <ProgressBar :value="metrics.memory.percent" :max="100" size="lg" variant="gradient" class="mb-4" />
-      <div class="grid grid-cols-3 gap-2 sm:gap-4">
-        <div class="text-center p-3 rounded-xl bg-slate-50 dark:bg-white/5">
-          <div class="text-lg font-heading font-semibold text-slate-900 dark:text-white">{{ formatBytes(metrics.memory.used) }}</div>
-          <div class="text-sm text-slate-500 dark:text-slate-400">Used</div>
-        </div>
-        <div class="text-center p-3 rounded-xl bg-slate-50 dark:bg-white/5">
-          <div class="text-lg font-heading font-semibold text-slate-900 dark:text-white">{{ formatBytes(metrics.memory.available) }}</div>
-          <div class="text-sm text-slate-500 dark:text-slate-400">Available</div>
-        </div>
-        <div class="text-center p-3 rounded-xl bg-slate-50 dark:bg-white/5">
-          <div class="text-lg font-heading font-semibold text-slate-900 dark:text-white">{{ formatBytes(metrics.memory.total) }}</div>
-          <div class="text-sm text-slate-500 dark:text-slate-400">Total</div>
-        </div>
-      </div>
-    </div>
+  <TermBlock :id="k('disks')" title="df -h" :meta="rowsMeta(disks.length, metrics.disks.length)">
+    <table class="tbl">
+      <thead><tr><th>MOUNT</th><th>USE</th><th class="r">USED</th><th class="r">SIZE</th><th class="r">%</th></tr></thead>
+      <tbody>
+        <tr v-for="d in disks" :key="d.mount">
+          <td>{{ d.mount }}</td>
+          <td><TextBar :percent="d.percent" :width="14" /></td>
+          <td class="r">{{ formatBytes(d.used) }}</td>
+          <td class="r">{{ formatBytes(d.total) }}</td>
+          <td class="r">{{ d.percent.toFixed(1) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </TermBlock>
 
-    <!-- Disks -->
-    <div v-if="metrics.disks.length > 0" class="card p-4 sm:p-6">
-      <h3 class="section-title mb-4">Disk Usage</h3>
-      <div class="space-y-4">
-        <div v-for="disk in metrics.disks" :key="disk.mount" class="p-4 rounded-xl bg-slate-50 dark:bg-white/5">
-          <div class="flex justify-between items-center mb-2">
-            <div class="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              </svg>
-              <span class="font-medium text-slate-900 dark:text-white font-mono text-sm">{{ disk.mount }}</span>
-            </div>
-            <span class="text-sm text-slate-500 dark:text-slate-400">
-              {{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}
-            </span>
-          </div>
-          <ProgressBar :value="disk.percent" :max="100" />
-        </div>
-      </div>
-    </div>
+  <TermBlock :id="k('net')" title="net">
+    <div><span class="cy">↓ {{ formatSpeed(metrics.network.download_rate) }}</span>&nbsp; <span class="mg">↑ {{ formatSpeed(metrics.network.upload_rate) }}</span></div>
+    <div class="dim">rx {{ formatBytes(metrics.network.bytes_recv) }} · tx {{ formatBytes(metrics.network.bytes_sent) }}</div>
+  </TermBlock>
 
-    <!-- Network -->
-    <div class="card p-4 sm:p-6">
-      <h3 class="section-title mb-4">Network</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-        <div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-500/20">
-          <div class="flex items-center gap-2 mb-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="19" x2="12" y2="5"></line>
-              <polyline points="5 12 12 5 19 12"></polyline>
-            </svg>
-            <span class="text-sm font-medium text-emerald-700 dark:text-emerald-400">Download</span>
-          </div>
-          <div class="text-2xl font-heading font-bold text-emerald-600 dark:text-emerald-400">
-            {{ formatSpeed(metrics.network.download_rate) }}
-          </div>
-          <div class="text-sm text-emerald-600/70 dark:text-emerald-400/70 mt-1">
-            Total: {{ formatBytes(metrics.network.bytes_recv) }}
-          </div>
-        </div>
+  <TermBlock v-if="metrics.temperatures.length" :id="k('temps')" title="sensors" :meta="rowsMeta(temps.length, metrics.temperatures.length)">
+    <table class="tbl">
+      <thead><tr><th>SENSOR</th><th class="r">TEMP</th><th class="r">HIGH</th><th class="r">CRIT</th></tr></thead>
+      <tbody>
+        <tr v-for="t in temps" :key="t.label">
+          <td>{{ t.label }}</td>
+          <td class="r" :class="tempLevel(t)">{{ t.current.toFixed(1) }}°C</td>
+          <td class="r dim">{{ t.high != null ? `${t.high.toFixed(0)}°C` : '–' }}</td>
+          <td class="r dim">{{ t.critical != null ? `${t.critical.toFixed(0)}°C` : '–' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </TermBlock>
 
-        <div class="p-4 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-500/20">
-          <div class="flex items-center gap-2 mb-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <polyline points="19 12 12 19 5 12"></polyline>
-            </svg>
-            <span class="text-sm font-medium text-blue-700 dark:text-blue-400">Upload</span>
-          </div>
-          <div class="text-2xl font-heading font-bold text-blue-600 dark:text-blue-400">
-            {{ formatSpeed(metrics.network.upload_rate) }}
-          </div>
-          <div class="text-sm text-blue-600/70 dark:text-blue-400/70 mt-1">
-            Total: {{ formatBytes(metrics.network.bytes_sent) }}
-          </div>
-        </div>
-      </div>
-    </div>
+  <FanBlock v-if="metrics.fans.length" :system="system" :fans="metrics.fans" />
 
-    <!-- Temperatures -->
-    <div v-if="metrics.temperatures.length > 0" class="card p-4 sm:p-6">
-      <h3 class="section-title mb-4">Temperatures</h3>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-        <div
-          v-for="temp in metrics.temperatures"
-          :key="temp.label"
-          class="p-4 rounded-xl text-center"
-          :class="{
-            'bg-emerald-50 dark:bg-emerald-500/10': temp.current < 60,
-            'bg-amber-50 dark:bg-amber-500/10': temp.current >= 60 && temp.current < 80,
-            'bg-red-50 dark:bg-red-500/10': temp.current >= 80
-          }"
-        >
-          <div
-            class="text-3xl font-heading font-bold"
-            :class="{
-              'text-emerald-600 dark:text-emerald-400': temp.current < 60,
-              'text-amber-600 dark:text-amber-400': temp.current >= 60 && temp.current < 80,
-              'text-red-600 dark:text-red-400': temp.current >= 80
-            }"
-          >
-            {{ temp.current.toFixed(0) }}°
-          </div>
-          <div class="text-sm text-slate-600 dark:text-slate-400 mt-1">{{ temp.label }}</div>
-        </div>
-      </div>
-    </div>
+  <TermBlock :id="k('procs')" title="ps aux --sort=-%cpu" :meta="rowsMeta(procs.length, metrics.processes.length)">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th class="r">PID</th><th>NAME</th><th class="r">CPU%</th><th class="r">MEM%</th><th class="r">RSS</th>
+          <th v-if="procRunner.can('kill')" />
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="p in procs" :key="p.pid">
+          <td class="r dim">{{ p.pid }}</td>
+          <td class="max-w-[28ch] truncate">{{ p.name }}</td>
+          <td class="r">{{ p.cpu_percent.toFixed(1) }}</td>
+          <td class="r">{{ p.memory_percent.toFixed(1) }}</td>
+          <td class="r dim">{{ formatBytes(p.memory_usage) }}</td>
+          <td v-if="procRunner.can('kill')">
+            <ActBtn :runner="procRunner" action="kill" :target="String(p.pid)" :params="{ signal: 'TERM' }" text="term" :label="`kill -TERM ${p.pid} (${p.name})`" />
+            <ActBtn :runner="procRunner" action="kill" :target="String(p.pid)" :params="{ signal: 'KILL' }" text="kill" :label="`kill -KILL ${p.pid} (${p.name})`" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <ActionPrompt :runner="procRunner" />
+  </TermBlock>
 
-    <!-- Fans -->
-    <div v-if="metrics.fans?.length" class="card p-4 sm:p-6">
-      <h3 class="section-title mb-4">Fans</h3>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-        <div
-          v-for="fan in metrics.fans"
-          :key="fan.label"
-          class="p-4 rounded-xl text-center bg-slate-50 dark:bg-white/5"
-        >
-          <div class="text-3xl font-heading font-bold text-slate-900 dark:text-white tabular-nums">
-            {{ fan.rpm }}
-          </div>
-          <div class="text-xs text-slate-500 dark:text-slate-400">RPM</div>
-          <div class="text-sm text-slate-600 dark:text-slate-400 mt-1 font-mono truncate">{{ fan.label }}</div>
-        </div>
-      </div>
-    </div>
+  <TermBlock v-if="metrics.services.length" :id="k('services')" title="systemctl status" :meta="rowsMeta(services.length, metrics.services.length)">
+    <table class="tbl">
+      <thead><tr><th>UNIT</th><th>ACTIVE</th><th>SUB</th><th v-if="svcRunner.can('service_restart')" /></tr></thead>
+      <tbody>
+        <tr v-for="s in services" :key="s.name">
+          <td>{{ s.name }}</td>
+          <td :class="serviceClass(s.active_state)">{{ s.active_state }}</td>
+          <td class="dim">{{ s.sub_state }}</td>
+          <td v-if="svcRunner.can('service_restart')">
+            <ActBtn :runner="svcRunner" action="service_start" :target="s.name" text="start" :label="`systemctl start ${s.name}`" />
+            <ActBtn :runner="svcRunner" action="service_stop" :target="s.name" text="stop" :label="`systemctl stop ${s.name}`" />
+            <ActBtn :runner="svcRunner" action="service_restart" :target="s.name" text="restart" :label="`systemctl restart ${s.name}`" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <ActionPrompt :runner="svcRunner" />
+  </TermBlock>
 
-    <!-- Processes -->
-    <div v-if="metrics.processes?.length" class="card p-4 sm:p-6">
-      <h3 class="section-title mb-4">Top Processes</h3>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
-              <th class="py-2 pr-4 font-medium">PID</th>
-              <th class="py-2 pr-4 font-medium">Name</th>
-              <th class="py-2 pr-4 font-medium text-right">CPU</th>
-              <th class="py-2 pr-4 font-medium text-right">Memory</th>
-              <th class="py-2 font-medium text-right">Mem %</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="proc in metrics.processes"
-              :key="proc.pid"
-              class="border-b border-slate-100 dark:border-white/5 last:border-0"
-            >
-              <td class="py-2 pr-4 font-mono text-slate-500 dark:text-slate-400 tabular-nums">{{ proc.pid }}</td>
-              <td class="py-2 pr-4 font-mono text-slate-900 dark:text-white truncate max-w-[16rem]">{{ proc.name }}</td>
-              <td class="py-2 pr-4 text-right tabular-nums text-slate-900 dark:text-white">{{ proc.cpu_percent.toFixed(1) }}%</td>
-              <td class="py-2 pr-4 text-right tabular-nums text-slate-600 dark:text-slate-300">{{ formatBytes(proc.memory_usage) }}</td>
-              <td class="py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{{ proc.memory_percent.toFixed(1) }}%</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+  <PowerBlock :system="system" />
 </template>

@@ -1,173 +1,78 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { DockerMetrics, ContainerMetrics } from '@/types/metrics'
-import type { MenuItem } from '@/components/common/KebabMenu.vue'
-import MetricCard from '@/components/common/MetricCard.vue'
-import ProgressBar from '@/components/charts/ProgressBar.vue'
-import KebabMenu from '@/components/common/KebabMenu.vue'
-import ConfirmModal from '@/components/common/ConfirmModal.vue'
-import { useActions, type DockerAction } from '@/composables/useActions'
+import { computed, ref } from 'vue'
+import type { ContainerMetrics, DockerMetrics, SystemMetrics } from '@/types/metrics'
+import { formatBytes } from '@/composables/useFormatters'
+import { useActions } from '@/composables/useActions'
+import { useFilter } from '@/composables/useFilter'
+import TermBlock from '@/components/term/TermBlock.vue'
+import ActBtn from '@/components/term/ActBtn.vue'
+import ActionPrompt from '@/components/term/ActionPrompt.vue'
+import LogsBlock from './LogsBlock.vue'
 
-const props = defineProps<{
-  metrics: DockerMetrics
-  systemId: string
-}>()
+const props = defineProps<{ system: SystemMetrics; metrics: DockerMetrics }>()
 
-const { isLoading, error, dockerAction } = useActions(props.systemId)
+const { matches } = useFilter()
+const runner = useActions(() => props.system)
+const openLogs = ref<string[]>([])
 
-const confirmModal = ref({
-  show: false,
-  title: '',
-  message: '',
-  confirmLabel: '',
-  variant: 'warning' as 'warning' | 'danger',
-  containerName: '',
-  action: '' as DockerAction,
+const containers = computed(() =>
+  props.metrics.containers.filter(c => matches(c.name, c.image, c.state, c.status)),
+)
+const meta = computed(() => {
+  const shown = containers.value.length
+  const total = props.metrics.total_count
+  return `${props.metrics.running_count}/${total} running${shown === props.metrics.containers.length ? '' : ` · ${shown} shown`}`
 })
 
-const getMenuItems = (container: ContainerMetrics): MenuItem[] => {
-  if (container.state === 'running' || container.state === 'paused') {
-    return [
-      { label: 'Restart', action: 'restart' },
-      { label: 'Stop', action: 'stop', variant: 'danger' },
-    ]
-  }
-  return [
-    { label: 'Start', action: 'start' },
-  ]
-}
+const stateClass = (state: string) =>
+  state === 'running' ? 'ok' : state === 'paused' || state === 'restarting' ? 'warn' : state === 'dead' ? 'crit' : 'off'
 
-const onAction = (containerName: string, action: string) => {
-  if (action === 'start') {
-    dockerAction(containerName, 'start')
-    return
-  }
+const isOn = (c: ContainerMetrics) => c.state === 'running'
 
-  const isStop = action === 'stop'
-  confirmModal.value = {
-    show: true,
-    title: isStop ? 'Stop Container' : 'Restart Container',
-    message: isStop
-      ? `Stop "${containerName}"? Running processes will be terminated.`
-      : `Restart "${containerName}"? It will be briefly unavailable.`,
-    confirmLabel: isStop ? 'Stop' : 'Restart',
-    variant: isStop ? 'danger' : 'warning',
-    containerName,
-    action: action as DockerAction,
-  }
-}
-
-const onConfirm = () => {
-  const { containerName, action } = confirmModal.value
-  confirmModal.value.show = false
-  dockerAction(containerName, action)
-}
-
-const onCancel = () => {
-  confirmModal.value.show = false
-}
-
-const formatBytes = (bytes: number): string => {
-  const units = ['B', 'KB', 'MB', 'GB']
-  let i = 0
-  let size = bytes
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
-  }
-  return `${size.toFixed(1)} ${units[i]}`
+function toggleLogs(name: string) {
+  const i = openLogs.value.indexOf(name)
+  if (i === -1) openLogs.value.push(name)
+  else openLogs.value.splice(i, 1)
 }
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Overview Cards -->
-    <div class="grid grid-cols-3 gap-4">
-      <MetricCard label="Total Containers" :value="metrics.total_count" />
-      <MetricCard label="Running" :value="metrics.running_count" />
-      <MetricCard label="Stopped" :value="metrics.stopped_count" />
-    </div>
+  <TermBlock :id="`${system.id}:containers`" title="docker ps -a" :host="system.id" :meta="meta">
+    <table class="tbl">
+      <thead><tr><th>NAME</th><th>STATE</th><th class="r">CPU</th><th class="r">MEM</th><th /><th>IMAGE</th></tr></thead>
+      <tbody>
+        <tr v-for="c in containers" :key="c.id">
+          <td class="max-w-[26ch] truncate" :title="c.status">{{ c.name }}</td>
+          <td :class="stateClass(c.state)">{{ c.state }}</td>
+          <td class="r">{{ isOn(c) ? `${c.cpu_percent.toFixed(1)}%` : '–' }}</td>
+          <td class="r">{{ isOn(c) ? formatBytes(c.memory_usage) : '–' }}</td>
+          <td>
+            <template v-if="c.state === 'running'">
+              <ActBtn :runner="runner" action="restart" :target="c.name" />
+              <ActBtn :runner="runner" action="stop" :target="c.name" />
+              <ActBtn :runner="runner" action="pause" :target="c.name" />
+              <ActBtn :runner="runner" action="kill" :target="c.name" />
+            </template>
+            <template v-else-if="c.state === 'paused'">
+              <ActBtn :runner="runner" action="unpause" :target="c.name" />
+              <ActBtn :runner="runner" action="stop" :target="c.name" />
+            </template>
+            <ActBtn v-else :runner="runner" action="start" :target="c.name" />
+            <ActBtn :runner="runner" action="recreate" :target="c.name" />
+            <button type="button" class="btn ml-1" :class="{ on: openLogs.includes(c.name) }" @click="toggleLogs(c.name)">logs</button>
+          </td>
+          <td class="dim max-w-[36ch] truncate">{{ c.image }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <ActionPrompt :runner="runner" />
+  </TermBlock>
 
-    <!-- Containers List -->
-    <div class="card overflow-hidden">
-      <div class="p-5 border-b border-slate-200 dark:border-slate-700">
-        <h3 class="text-lg font-medium text-slate-900 dark:text-white">Containers</h3>
-      </div>
-
-      <div v-if="metrics.containers.length === 0" class="p-8 text-center text-slate-500 dark:text-slate-400">
-        No containers found
-      </div>
-
-      <div v-else class="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div
-          v-for="container in metrics.containers"
-          :key="container.id"
-          class="p-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-        >
-          <div class="flex items-center justify-between mb-3">
-            <div class="min-w-0 flex-1 pr-2">
-              <div class="font-medium text-slate-900 dark:text-white truncate">{{ container.name }}</div>
-              <div class="text-sm text-slate-500 dark:text-slate-400 truncate">{{ container.image }}</div>
-            </div>
-            <div class="flex items-center gap-2 flex-shrink-0">
-              <span
-                class="px-2 py-1 text-xs font-medium rounded-full"
-                :class="{
-                  'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400': container.state === 'running',
-                  'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400': container.state === 'paused',
-                  'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400': container.state === 'exited',
-                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400': container.state === 'dead',
-                }"
-              >
-                {{ container.state }}
-              </span>
-              <KebabMenu
-                :items="getMenuItems(container)"
-                :loading="isLoading(container.name)"
-                @select="onAction(container.name, $event)"
-              />
-            </div>
-          </div>
-
-          <!-- Error indicator -->
-          <div
-            v-if="error?.targetId === container.name"
-            class="mb-2 px-2.5 py-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-xs text-red-600 dark:text-red-400"
-          >
-            {{ error.message }}
-          </div>
-
-          <div v-if="container.state === 'running'" class="space-y-2">
-            <div>
-              <div class="flex justify-between text-sm mb-1">
-                <span class="text-slate-500 dark:text-slate-400">CPU</span>
-                <span class="text-slate-900 dark:text-white">{{ container.cpu_percent.toFixed(1) }}%</span>
-              </div>
-              <ProgressBar :value="container.cpu_percent" :max="100" />
-            </div>
-            <div>
-              <div class="flex justify-between text-sm mb-1">
-                <span class="text-slate-500 dark:text-slate-400">Memory</span>
-                <span class="text-slate-900 dark:text-white">
-                  {{ formatBytes(container.memory_usage) }} / {{ formatBytes(container.memory_limit) }}
-                </span>
-              </div>
-              <ProgressBar :value="container.memory_percent" :max="100" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Confirm Modal -->
-    <ConfirmModal
-      :show="confirmModal.show"
-      :title="confirmModal.title"
-      :message="confirmModal.message"
-      :confirm-label="confirmModal.confirmLabel"
-      :variant="confirmModal.variant"
-      @confirm="onConfirm"
-      @cancel="onCancel"
-    />
-  </div>
+  <LogsBlock
+    v-for="name in openLogs"
+    :key="name"
+    :system-id="system.id"
+    :container="name"
+    @close="toggleLogs(name)"
+  />
 </template>

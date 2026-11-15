@@ -12,8 +12,8 @@ export default defineConfig({
         name: 'ServerMonitor',
         short_name: 'ServerMonitor',
         description: 'Homelab server monitoring dashboard',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#0b0e0d',
+        background_color: '#0b0e0d',
         display: 'standalone',
         scope: '/',
         start_url: '/',
@@ -35,7 +35,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,svg,png,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/api/'),
+            // Container logs are a live snapshot; a cached copy would show stale lines.
+            urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/api/') && !url.pathname.endsWith('/docker/logs'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',

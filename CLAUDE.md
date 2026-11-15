@@ -54,14 +54,16 @@ backend/
 ├── cmd/server-monitor/main.go      # Entry: signal handling, lifecycle, http.Server
 └── internal/
     ├── api/
-    │   ├── routes.go               # chi router, AppState, CORS, SPA fallback
-    │   ├── actions.go              # Docker / qBittorrent action handlers
+    │   ├── routes.go               # chi router, AppState, SPA fallback
+    │   ├── actions.go              # POST .../actions dispatch + docker logs handler
     │   └── websocket.go            # gorilla/websocket upgrade + per-conn pump
     ├── broadcast/broadcast.go      # Subscriber registry (lag-tolerant fan-out)
     ├── collectors/
     │   ├── collector.go            # Collector interface + factory
     │   ├── ssh.go                  # Shared SSH abstraction (Linux + UNAS)
     │   ├── linux.go, docker.go, qbittorrent.go, unifi.go, unas.go, mock.go
+    │   ├── actions.go              # Actor interface, control allowlist, validation
+    │   ├── actions_*.go            # Per-type actors (ssh, docker, qbittorrent, unifi)
     ├── config/                     # settings, systems, YAML loader
     ├── manager/manager.go          # Poll loop, reload-safe collector set
     ├── models/                     # Wire-format structs (status, metrics, messages)

@@ -1,20 +1,34 @@
 poll_interval: 5
 
+# allowed_hosts: extra Host header names the server accepts (case-insensitive).
+# IP addresses, localhost and *.local names are always accepted; any other
+# Host gets 403, which blocks DNS rebinding. Add the DNS name you use to open
+# the dashboard, for example: [monitor.home.arpa]
+allowed_hosts: []
+
+# controls: the control actions allowed per system (omit = none; read-only
+# docker logs are always allowed). Valid values per type:
+#   docker: container, recreate        qbittorrent: torrent, delete_files
+#   linux: power, process, service, fan
+#   unas: power                        unifi: device, client
 systems:
   - id: linux-server-1
     name: "Linux Server 1"
     type: linux
     enabled: true
+    controls: [power, process, service, fan]
     config:
       host: 192.168.1.100
       port: 22
       username: monitor
+      services: [servermonitor]
       password: REPLACE_ME
 
   - id: docker-host
     name: "Docker Host"
     type: docker
     enabled: true
+    controls: [container, recreate]
     config:
       host: tcp://192.168.1.100:2375
 
@@ -22,6 +36,7 @@ systems:
     name: "qBittorrent"
     type: qbittorrent
     enabled: true
+    controls: [torrent, delete_files]
     config:
       url: http://192.168.1.100:8080
       username: admin
@@ -31,6 +46,7 @@ systems:
   #   name: "UniFi Controller"
   #   type: unifi
   #   enabled: true
+  #   controls: [device, client]
   #   config:
   #     host: 192.168.1.1
   #     port: 443
@@ -41,6 +57,7 @@ systems:
   #   name: "NAS Storage"
   #   type: unas
   #   enabled: true
+  #   controls: [power]
   #   config:
   #     host: 192.168.1.200
   #     port: 22

@@ -62,7 +62,9 @@ func AuthenticateQBittorrent(ctx context.Context, client *http.Client, cfg *conf
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(string(body)) != "Ok." {
+	// qBittorrent < 5.1 answers 200 "Ok." (or 200 "Fails."); 5.1+ answers 204 with no body.
+	text := strings.TrimSpace(string(body))
+	if resp.StatusCode/100 != 2 || (text != "Ok." && text != "") {
 		return errors.New("qBittorrent authentication failed")
 	}
 	return nil

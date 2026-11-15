@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -96,22 +97,54 @@ func (c *SSHConnection) ensure() error {
 // cancellation. On any error, the underlying connection is closed so the
 // next call reconnects.
 func (c *SSHConnection) Run(ctx context.Context, cmd string) (string, error) {
+	out, _, err := c.exec(ctx, cmd)
+	var ee *execError
+	if errors.As(err, &ee) {
+		return "", fmt.Errorf("exec %q: %w", cmd, ee.err)
+	}
+	return out, err
+}
+
+// RunAction executes a control command and returns stdout. Unlike Run, a
+// failed command reports its stderr instead of the (long) command text.
+func (c *SSHConnection) RunAction(ctx context.Context, cmd string) (string, error) {
+	out, stderr, err := c.exec(ctx, cmd)
+	var ee *execError
+	if errors.As(err, &ee) {
+		if msg := strings.TrimSpace(stderr); msg != "" {
+			return "", errors.New(msg)
+		}
+		return "", ee.err
+	}
+	return out, err
+}
+
+// execError marks a failure of the remote command itself, as opposed to a
+// connection or session error.
+type execError struct{ err error }
+
+func (e *execError) Error() string { return e.err.Error() }
+func (e *execError) Unwrap() error { return e.err }
+
+// exec runs cmd and returns stdout and stderr.
+func (c *SSHConnection) exec(ctx context.Context, cmd string) (string, string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if err := c.ensure(); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	sess, err := c.client.NewSession()
 	if err != nil {
 		c.dropLocked()
-		return "", fmt.Errorf("session open: %w", err)
+		return "", "", fmt.Errorf("session open: %w", err)
 	}
 	defer sess.Close()
 
-	var out bytes.Buffer
+	var out, stderr bytes.Buffer
 	sess.Stdout = &out
+	sess.Stderr = &stderr
 
 	done := make(chan error, 1)
 	go func() { done <- sess.Run(cmd) }()
@@ -120,15 +153,15 @@ func (c *SSHConnection) Run(ctx context.Context, cmd string) (string, error) {
 	case <-ctx.Done():
 		_ = sess.Signal(ssh.SIGKILL)
 		c.dropLocked()
-		return "", ctx.Err()
+		return "", "", ctx.Err()
 	case err := <-done:
 		if err != nil {
 			c.dropLocked()
-			return "", fmt.Errorf("exec %q: %w", cmd, err)
+			return "", stderr.String(), &execError{err}
 		}
 	}
 
-	return out.String(), nil
+	return out.String(), stderr.String(), nil
 }
 
 func (c *SSHConnection) dropLocked() {

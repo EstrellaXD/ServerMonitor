@@ -3,6 +3,8 @@ package collectors
 import (
 	"math"
 	"testing"
+
+	"github.com/EstrellaXD/ServerMonitor/backend/internal/models"
 )
 
 func TestParseCombinedOutput_extractsNamedSections(t *testing.T) {
@@ -120,7 +122,7 @@ func TestParseUptime_takesFirstFloatAsSeconds(t *testing.T) {
 }
 
 func TestParseFans_keepsLabelWithColonAndSkipsInvalid(t *testing.T) {
-	got := parseFans("pwmfan/fan1:4011\nnct6775: CPU Fan:1200\ngarbage\nbad:abc\n")
+	got := parseFans("pwmfan/fan1:4011:128:ctl\nnct6775: CPU Fan:1200::\ngarbage\nbad:abc::x\n", "manual")
 	if len(got) != 2 {
 		t.Fatalf("expected 2 fans, got %+v", got)
 	}
@@ -129,6 +131,36 @@ func TestParseFans_keepsLabelWithColonAndSkipsInvalid(t *testing.T) {
 	}
 	if got[1].Label != "nct6775: CPU Fan" || got[1].RPM != 1200 {
 		t.Fatalf("fan1: %+v", got[1])
+	}
+}
+
+func TestParseFans_setsModeOnlyForControlledFan(t *testing.T) {
+	got := parseFans("pwmfan/fan1:4011:128:ctl\nnct6775/fan2:900:255:\npwmfan:0:64:\n", "manual")
+	if got[0].PWMPercent == nil || *got[0].PWMPercent != 50.2 || got[0].Mode != "manual" {
+		t.Fatalf("controlled fan: %+v", got[0])
+	}
+	// Other fans, also of a second pwmfan device, report their duty cycle but are not controllable.
+	if got[1].PWMPercent == nil || *got[1].PWMPercent != 100 || got[1].Mode != "" {
+		t.Fatalf("nct6775: %+v", got[1])
+	}
+	if got[2].Mode != "" {
+		t.Fatalf("second pwmfan: %+v", got[2])
+	}
+}
+
+func TestParseServices_mapsPropertiesToUnits(t *testing.T) {
+	got := parseServices("@servermonitor\nActiveState=active\nSubState=running\n@nginx\nActiveState=failed\nSubState=failed\n")
+	if len(got) != 2 {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0] != (models.ServiceStatus{Name: "servermonitor", ActiveState: "active", SubState: "running"}) {
+		t.Fatalf("first: %+v", got[0])
+	}
+	if got[1].Name != "nginx" || got[1].ActiveState != "failed" {
+		t.Fatalf("second: %+v", got[1])
+	}
+	if empty := parseServices(""); empty == nil || len(empty) != 0 {
+		t.Fatalf("empty must be a non-nil empty slice: %#v", empty)
 	}
 }
 

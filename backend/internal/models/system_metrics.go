@@ -9,7 +9,9 @@ type SystemMetrics struct {
 	Status      SystemStatus `json:"status"`
 	LastUpdated time.Time    `json:"last_updated"`
 	Error       *string      `json:"error,omitempty"`
-	Metrics     any          `json:"metrics"`
+	// Controls lists the control groups enabled in config. Always an array.
+	Controls []string `json:"controls"`
+	Metrics  any      `json:"metrics"`
 }
 
 func NewErrorMetrics(id, name string, sysType SystemType, errMsg string) *SystemMetrics {

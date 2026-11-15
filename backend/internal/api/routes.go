@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 
@@ -21,32 +20,15 @@ type AppState struct {
 	Manager  *manager.Manager
 	Settings config.Settings
 	Bus      *broadcast.Broadcaster
-
-	systemConfigsMu sync.RWMutex
-	systemConfigs   map[string]any
 }
 
-func NewAppState(s *store.MetricsStore, m *manager.Manager, settings config.Settings, bus *broadcast.Broadcaster, initial map[string]any) *AppState {
+func NewAppState(s *store.MetricsStore, m *manager.Manager, settings config.Settings, bus *broadcast.Broadcaster) *AppState {
 	return &AppState{
-		Store:         s,
-		Manager:       m,
-		Settings:      settings,
-		Bus:           bus,
-		systemConfigs: initial,
+		Store:    s,
+		Manager:  m,
+		Settings: settings,
+		Bus:      bus,
 	}
-}
-
-func (s *AppState) SystemConfig(id string) (any, bool) {
-	s.systemConfigsMu.RLock()
-	defer s.systemConfigsMu.RUnlock()
-	v, ok := s.systemConfigs[id]
-	return v, ok
-}
-
-func (s *AppState) ReplaceSystemConfigs(next map[string]any) {
-	s.systemConfigsMu.Lock()
-	s.systemConfigs = next
-	s.systemConfigsMu.Unlock()
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
@@ -62,8 +44,15 @@ func errorJSON(w http.ResponseWriter, status int, msg string) {
 }
 
 func Routes(state *AppState, staticDir string) http.Handler {
+	// No CORS headers: the UI is same-origin (static files here, the vite
+	// proxy in dev). That stops a plain cross-site page from reading responses
+	// or sending a JSON POST, but not DNS rebinding, where the attacker's name
+	// resolves to this server and the page is same-origin. The Host allowlist
+	// stops that, and the /ws Origin check stops cross-site WebSocket reads.
+	// There is no authentication: anyone who can reach the port with an
+	// allowed Host can use the API.
 	r := chi.NewRouter()
-	r.Use(corsMiddleware)
+	r.Use(hostAllowlist(state))
 
 	r.Get("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -83,8 +72,8 @@ func Routes(state *AppState, staticDir string) http.Handler {
 	})
 
 	r.Post("/api/reload", reloadHandler(state))
-	r.Post("/api/systems/{system_id}/actions/docker", dockerActionHandler(state))
-	r.Post("/api/systems/{system_id}/actions/qbittorrent", qbitActionHandler(state))
+	r.Post("/api/systems/{system_id}/actions", actionHandler(state))
+	r.Get("/api/systems/{system_id}/docker/logs", dockerLogsHandler(state))
 
 	r.Get("/ws", websocketHandler(state))
 
@@ -93,19 +82,6 @@ func Routes(state *AppState, staticDir string) http.Handler {
 	}
 
 	return r
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "*")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // spaFileServer serves staticDir and falls back to index.html for unknown
@@ -130,12 +106,16 @@ func spaFileServer(staticDir string) http.Handler {
 
 func reloadHandler(state *AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		cfg := config.Load(state.Settings.ConfigPath)
+		cfg, err := config.Load(state.Settings.ConfigPath)
+		if err != nil {
+			// Keep monitoring with the current config.
+			errorJSON(w, http.StatusInternalServerError, "invalid config: "+err.Error())
+			return
+		}
 
 		state.Manager.Stop()
 		state.Store.Clear()
 		state.Manager.LoadConfig(cfg)
-		state.ReplaceSystemConfigs(cfg.EnabledSystemConfigs())
 		state.Manager.Start(context.Background())
 
 		ids := state.Manager.IDs()

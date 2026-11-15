@@ -6,6 +6,8 @@ type LinuxSystemConfig struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password,omitempty"`
 	KeyPath  string `yaml:"key_path,omitempty"`
+	// Services are the systemd units that are reported and may be controlled.
+	Services []string `yaml:"services,omitempty"`
 }
 
 type DockerSystemConfig struct {

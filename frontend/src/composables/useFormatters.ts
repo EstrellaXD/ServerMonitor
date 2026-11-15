@@ -58,6 +58,46 @@ export function formatPercent(value: number, decimals = 1): string {
 }
 
 /**
+ * Format a date as a 24h wall-clock time (HH:MM:SS)
+ */
+export function formatClock(date: Date | string | null | undefined): string {
+  if (!date) return '--:--:--'
+  const d = typeof date === 'string' ? new Date(date) : date
+  return d.toLocaleTimeString([], { hour12: false })
+}
+
+/**
+ * Format a duration in milliseconds (e.g. 120ms, 1.2s)
+ */
+export function formatMs(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`
+}
+
+export type Level = 'ok' | 'warn' | 'crit'
+
+/**
+ * Map a usage percentage to a semantic level class
+ */
+export function usageLevel(percent: number, warn = 75, crit = 90): Level {
+  if (percent >= crit) return 'crit'
+  if (percent >= warn) return 'warn'
+  return 'ok'
+}
+
+const PARTIAL_BLOCKS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+
+/**
+ * Render a percentage as a fixed-width text bar (eighth-block resolution)
+ */
+export function formatBar(percent: number, width = 20): string {
+  const eighths = Math.round((Math.min(Math.max(percent, 0), 100) / 100) * width * 8)
+  const full = Math.floor(eighths / 8)
+  const part = PARTIAL_BLOCKS[eighths % 8]
+  const used = full + (part ? 1 : 0)
+  return '█'.repeat(full) + part + '░'.repeat(width - used)
+}
+
+/**
  * Composable that returns all formatters for use in components
  */
 export function useFormatters() {
@@ -67,5 +107,9 @@ export function useFormatters() {
     formatUptime,
     formatEta,
     formatPercent,
+    formatClock,
+    formatMs,
+    formatBar,
+    usageLevel,
   }
 }

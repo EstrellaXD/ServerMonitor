@@ -1,174 +1,141 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log/slog"
+	"mime"
 	"net/http"
-	"net/url"
-	"strings"
+	"strconv"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/EstrellaXD/ServerMonitor/backend/internal/collectors"
-	"github.com/EstrellaXD/ServerMonitor/backend/internal/config"
+	"github.com/EstrellaXD/ServerMonitor/backend/internal/models"
 )
 
-type dockerActionReq struct {
-	ContainerName string `json:"container_name"`
-	Action        string `json:"action"`
-}
+// actionTimeout bounds one action. A docker recreate pulls an image, so it
+// is generous.
+const actionTimeout = 10 * time.Minute
 
-type qbitActionReq struct {
-	Hash        string `json:"hash"`
-	Action      string `json:"action"`
-	DeleteFiles bool   `json:"delete_files"`
-}
+const (
+	defaultLogTail = 200
+	maxLogTail     = 2000
+)
 
 func decodeJSON(r *http.Request, out any) error {
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(out)
 }
 
-func dockerActionHandler(state *AppState) http.HandlerFunc {
+// actionHandler is the single entry point for control actions:
+// allowlist → validation → the system's Actor.
+func actionHandler(state *AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// A cross-site page can send a text/plain POST without a preflight.
+		// application/json needs a preflight, which fails without CORS headers.
+		if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
+			errorJSON(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+			return
+		}
 		systemID := chi.URLParam(r, "system_id")
-		raw, ok := state.SystemConfig(systemID)
+		sys, ok := state.Manager.System(systemID)
 		if !ok {
-			errorJSON(w, http.StatusNotFound, "Docker system not found")
-			return
-		}
-		cfg, ok := raw.(*config.DockerSystemConfig)
-		if !ok {
-			errorJSON(w, http.StatusNotFound, "Docker system not found")
+			errorJSON(w, http.StatusNotFound, "system not found")
 			return
 		}
 
-		var body dockerActionReq
-		if err := decodeJSON(r, &body); err != nil {
-			errorJSON(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if body.Action != "start" && body.Action != "stop" && body.Action != "restart" {
-			errorJSON(w, http.StatusBadRequest, "Invalid action: "+body.Action)
+		var req collectors.ActionRequest
+		if err := decodeJSON(r, &req); err != nil {
+			errorJSON(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 			return
 		}
 
-		opts := []client.Opt{
-			client.WithAPIVersionNegotiation(),
-			client.WithTimeout(10 * time.Second),
-		}
-		switch {
-		case cfg.Host != "":
-			opts = append(opts, client.WithHost(cfg.Host))
-		case cfg.Socket != "":
-			opts = append(opts, client.WithHost(cfg.Socket))
-		}
-		cli, err := client.NewClientWithOpts(opts...)
+		latest, _ := state.Store.Get(systemID)
+		action, err := collectors.ValidateAction(sys, latest, req)
 		if err != nil {
+			var ae *collectors.ActionError
+			if errors.As(err, &ae) {
+				errorJSON(w, ae.Code, ae.Msg)
+				return
+			}
 			errorJSON(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		defer cli.Close()
 
-		ctx := r.Context()
-		switch body.Action {
-		case "start":
-			err = cli.ContainerStart(ctx, body.ContainerName, container.StartOptions{})
-		case "stop":
-			err = cli.ContainerStop(ctx, body.ContainerName, container.StopOptions{})
-		case "restart":
-			err = cli.ContainerRestart(ctx, body.ContainerName, container.StopOptions{})
-		}
+		// The action must not stop half-way when the client goes away.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), actionTimeout)
+		defer cancel()
+		started := time.Now()
+		output, err := collectors.NewActor(sys, state.Settings.MockMode).Run(ctx, action)
 		if err != nil {
-			slog.Error("docker action failed", "system", systemID, "action", body.Action, "container", body.ContainerName, "err", err)
-			errorJSON(w, http.StatusInternalServerError, err.Error())
+			slog.Error("action failed", "system", systemID, "action", action.Name, "target", action.Target, "err", err)
+			code := http.StatusInternalServerError
+			var ae *collectors.ActionError
+			if errors.As(err, &ae) {
+				code = ae.Code
+			}
+			errorJSON(w, code, err.Error())
 			return
 		}
-		slog.Info("docker action", "system", systemID, "action", body.Action, "container", body.ContainerName)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status":    "success",
-			"action":    body.Action,
-			"container": body.ContainerName,
-		})
+		slog.Info("action", "system", systemID, "action", action.Name, "target", action.Target, "took", time.Since(started))
+
+		body := map[string]string{"status": "success", "action": action.Name, "target": action.Target}
+		if output != "" {
+			body["output"] = output
+		}
+		writeJSON(w, http.StatusOK, body)
 	}
 }
 
-func qbitActionHandler(state *AppState) http.HandlerFunc {
+// parseLogTail reads the tail query value: default 200, clamped to 1..2000.
+func parseLogTail(raw string) (int, error) {
+	if raw == "" {
+		return defaultLogTail, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid tail %q", raw)
+	}
+	return min(max(n, 1), maxLogTail), nil
+}
+
+// dockerLogsHandler returns recent container logs. It is read-only, so no
+// control is required.
+func dockerLogsHandler(state *AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		systemID := chi.URLParam(r, "system_id")
-		raw, ok := state.SystemConfig(systemID)
+		sys, ok := state.Manager.System(systemID)
 		if !ok {
-			errorJSON(w, http.StatusNotFound, "qBittorrent system not found")
+			errorJSON(w, http.StatusNotFound, "system not found")
 			return
 		}
-		cfg, ok := raw.(*config.QBittorrentSystemConfig)
-		if !ok {
-			errorJSON(w, http.StatusNotFound, "qBittorrent system not found")
+		if sys.Type != "docker" {
+			errorJSON(w, http.StatusBadRequest, "logs are only available for docker systems")
 			return
 		}
-
-		var body qbitActionReq
-		if err := decodeJSON(r, &body); err != nil {
+		name := r.URL.Query().Get("container")
+		if !collectors.ValidContainerName(name) {
+			errorJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid container name %q", name))
+			return
+		}
+		tail, err := parseLogTail(r.URL.Query().Get("tail"))
+		if err != nil {
 			errorJSON(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if body.Action != "resume" && body.Action != "pause" && body.Action != "delete" {
-			errorJSON(w, http.StatusBadRequest, "Invalid action: "+body.Action)
-			return
-		}
 
-		ctx := r.Context()
-		hc := collectors.NewQBittorrentHTTPClient()
-		if err := collectors.AuthenticateQBittorrent(ctx, hc, cfg); err != nil {
-			errorJSON(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		endpoint := ""
-		form := url.Values{}
-		switch body.Action {
-		case "resume":
-			endpoint = "/api/v2/torrents/resume"
-			form.Set("hashes", body.Hash)
-		case "pause":
-			endpoint = "/api/v2/torrents/pause"
-			form.Set("hashes", body.Hash)
-		case "delete":
-			endpoint = "/api/v2/torrents/delete"
-			form.Set("hashes", body.Hash)
-			form.Set("deleteFiles", fmt.Sprintf("%t", body.DeleteFiles))
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.URL+endpoint, strings.NewReader(form.Encode()))
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		reader := collectors.NewActor(sys, state.Settings.MockMode).(collectors.LogReader)
+		lines, err := reader.Logs(ctx, name, tail)
 		if err != nil {
 			errorJSON(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		resp, err := hc.Do(req)
-		if err != nil {
-			slog.Error("qbit action failed", "system", systemID, "action", body.Action, "err", err)
-			errorJSON(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			slog.Info("qbit action", "system", systemID, "action", body.Action, "hash", body.Hash)
-			writeJSON(w, http.StatusOK, map[string]any{
-				"status": "success",
-				"action": body.Action,
-				"hash":   body.Hash,
-			})
-			return
-		}
-		text, _ := io.ReadAll(resp.Body)
-		slog.Error("qbit action returned non-2xx", "system", systemID, "action", body.Action, "status", resp.StatusCode, "body", string(text))
-		errorJSON(w, http.StatusInternalServerError, fmt.Sprintf("qBittorrent API returned %d %s", resp.StatusCode, resp.Status))
+		writeJSON(w, http.StatusOK, models.DockerLogs{Container: name, Lines: lines})
 	}
 }
